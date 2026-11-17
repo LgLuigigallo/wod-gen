@@ -189,14 +189,19 @@
 
       <!-- Modello -->
       <div class="settings-group">
-        <label for="set-model" class="settings-label">Modello</label>
-        <div class="input-with-button">
-          <input type="text" id="set-model" class="input-text" list="dl-models" placeholder="Es. gemini-flash-latest o gpt-5-mini">
-          <datalist id="dl-models"></datalist>
-          <button type="button" id="btn-fetch-models" class="btn btn-secondary btn-small">Carica modelli</button>
+        <label for="set-model-picker" class="settings-label">Modello</label>
+        <div style="display: flex; gap: 8px;">
+          <select id="set-model-picker" class="select-input" style="flex: 1;">
+            <!-- opzioni popolate dinamicamente -->
+          </select>
+          <button type="button" id="btn-fetch-models" class="btn btn-secondary btn-small" style="white-space: nowrap;">Carica modelli</button>
+        </div>
+        <div style="display: flex; gap: 8px; align-items: center; margin-top: 6px;">
+          <span style="font-size: 13px; color: var(--text-muted); white-space: nowrap;">Modello attivo:</span>
+          <input type="text" id="set-model" class="input-text" placeholder="Nome modello" style="flex: 1;">
         </div>
         <p class="settings-help">
-          I nomi dei modelli cambiano spesso. Premi "Carica modelli" per scaricare la lista ufficiale dal provider.
+          Scegli un modello dal menu a tendina o tocca "Carica modelli" per scaricare la lista ufficiale dalla tua chiave API. Puoi anche digitare un nome a mano.
         </p>
       </div>
 

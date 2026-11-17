@@ -60,10 +60,36 @@ FORMATO DI USCITA
   ];
 
   const DEFAULT_MODELS = {
-    'gemini': 'gemini-flash-latest',
-    'openai-responses': 'gpt-5-mini',
-    'openai-chat': 'gpt-5-mini',
+    'gemini': 'gemini-3.8-flash',
+    'openai-responses': 'gpt-4o-mini',
+    'openai-chat': 'gpt-4o-mini',
     'compat-chat': ''
+  };
+
+  const DEFAULT_SUGGESTIONS = {
+    'gemini': [
+      'gemini-3.8-flash',
+      'gemini-3.5-flash',
+      'gemini-3-flash',
+      'gemini-3.5-flash-lite',
+      'gemini-3.8-flash-lite',
+      'gemini-2.0-flash',
+      'gemini-flash-latest'
+    ],
+    'openai-responses': [
+      'gpt-4o-mini',
+      'gpt-4o',
+      'o3-mini',
+      'gpt-5-codex',
+      'gpt-5-mini'
+    ],
+    'openai-chat': [
+      'gpt-4o-mini',
+      'gpt-4o',
+      'o3-mini',
+      'gpt-5-mini'
+    ],
+    'compat-chat': []
   };
 
   const DEFAULT_BASE_URLS = {
@@ -571,10 +597,23 @@ Allegati: ${shotsCount} screenshot. Produci il JSON richiesto.`;
       } catch (e) {}
     }
 
+    let storedGemini = STORAGE.get('wb.model.gemini');
+    if (!storedGemini || storedGemini.includes('2.5') || storedGemini === 'gemini-1.5-flash') {
+      storedGemini = DEFAULT_MODELS.gemini;
+    }
+    let storedOpenAiResp = STORAGE.get('wb.model.openai-responses');
+    if (!storedOpenAiResp || storedOpenAiResp === 'gpt-5-mini') {
+      storedOpenAiResp = DEFAULT_MODELS['openai-responses'];
+    }
+    let storedOpenAiChat = STORAGE.get('wb.model.openai-chat');
+    if (!storedOpenAiChat || storedOpenAiChat === 'gpt-5-mini') {
+      storedOpenAiChat = DEFAULT_MODELS['openai-chat'];
+    }
+
     const models = {
-      'gemini': STORAGE.get('wb.model.gemini') || DEFAULT_MODELS.gemini,
-      'openai-responses': STORAGE.get('wb.model.openai-responses') || DEFAULT_MODELS['openai-responses'],
-      'openai-chat': STORAGE.get('wb.model.openai-chat') || DEFAULT_MODELS['openai-chat'],
+      'gemini': storedGemini,
+      'openai-responses': storedOpenAiResp,
+      'openai-chat': storedOpenAiChat,
       'compat-chat': STORAGE.get('wb.model.compat-chat') || DEFAULT_MODELS['compat-chat']
     };
 
@@ -775,8 +814,8 @@ Allegati: ${shotsCount} screenshot. Produci il JSON richiesto.`;
       selectProvider: document.getElementById('set-provider'),
       inputApiKey: document.getElementById('set-api-key'),
       btnToggleApiKey: document.getElementById('btn-toggle-api-key'),
+      selectModelPicker: document.getElementById('set-model-picker'),
       inputModel: document.getElementById('set-model'),
-      datalistModels: document.getElementById('dl-models'),
       btnFetchModels: document.getElementById('btn-fetch-models'),
       groupBaseUrl: document.getElementById('group-base-url'),
       inputBaseUrl: document.getElementById('set-base-url'),
@@ -904,23 +943,19 @@ Allegati: ${shotsCount} screenshot. Produci il JSON richiesto.`;
       else el.radioCarichiScritti.checked = true;
     }
 
-    function updateProviderFields() {
+    function updateProviderFields(fetchedModels = null) {
       const prov = el.selectProvider.value;
       const keyGroup = (prov === 'gemini') ? 'gemini' : (prov === 'compat-chat' ? 'compat' : 'openai');
       el.inputApiKey.value = settings.keys[keyGroup] || '';
 
-      el.inputModel.value = settings.models[prov] || DEFAULT_MODELS[prov] || '';
+      const currentModel = settings.models[prov] || DEFAULT_MODELS[prov] || '';
+      el.inputModel.value = currentModel;
 
-      // Popola suggerimenti modelli nel datalist
-      el.datalistModels.replaceChildren();
-      const suggestions = (prov === 'gemini')
-        ? ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-flash-latest']
-        : ['gpt-4o-mini', 'gpt-4o', 'gpt-5-mini', 'gpt-5-codex'];
-      for (const s of suggestions) {
-        const opt = document.createElement('option');
-        opt.value = s;
-        el.datalistModels.appendChild(opt);
-      }
+      // Popola il menu a tendina selectModelPicker
+      const modelsToShow = (Array.isArray(fetchedModels) && fetchedModels.length > 0)
+        ? fetchedModels
+        : (DEFAULT_SUGGESTIONS[prov] || []);
+      populateModelPicker(modelsToShow, currentModel);
 
       if (prov === 'openai-responses' || prov === 'openai-chat') {
         el.groupBaseUrl.style.display = 'block';
@@ -935,13 +970,38 @@ Allegati: ${shotsCount} screenshot. Produci il JSON richiesto.`;
       updateGenerateButtonState();
     }
 
+    function populateModelPicker(modelsList, activeModel) {
+      if (!el.selectModelPicker) return;
+      el.selectModelPicker.replaceChildren();
+
+      let matched = false;
+      for (const m of modelsList) {
+        const opt = document.createElement('option');
+        opt.value = m;
+        opt.textContent = m;
+        if (m === activeModel) {
+          opt.selected = true;
+          matched = true;
+        }
+        el.selectModelPicker.appendChild(opt);
+      }
+
+      const customOpt = document.createElement('option');
+      customOpt.value = '__custom__';
+      customOpt.textContent = 'Altro (digita sotto)…';
+      if (!matched && activeModel) {
+        customOpt.selected = true;
+      }
+      el.selectModelPicker.appendChild(customOpt);
+    }
+
     function saveSettingsFromUI() {
       const prov = el.selectProvider.value;
       const keyGroup = (prov === 'gemini') ? 'gemini' : (prov === 'compat-chat' ? 'compat' : 'openai');
       settings.provider = prov;
       settings.rememberKey = el.chkRememberKey.checked;
       settings.keys[keyGroup] = el.inputApiKey.value.trim();
-      settings.models[prov] = el.inputModel.value.trim();
+      settings.models[prov] = el.inputModel.value.trim() || DEFAULT_MODELS[prov];
 
       if (prov === 'compat-chat') {
         settings.baseUrls.compat = el.inputBaseUrl.value.trim();
@@ -985,7 +1045,33 @@ Allegati: ${shotsCount} screenshot. Produci il JSON richiesto.`;
       saveSettingsFromUI();
     });
 
+    if (el.selectModelPicker) {
+      el.selectModelPicker.addEventListener('change', () => {
+        const val = el.selectModelPicker.value;
+        if (val !== '__custom__') {
+          el.inputModel.value = val;
+          saveSettingsFromUI();
+        } else {
+          el.inputModel.focus();
+        }
+      });
+    }
+
     el.inputModel.addEventListener('input', () => {
+      const val = el.inputModel.value.trim();
+      if (el.selectModelPicker) {
+        let found = false;
+        for (const opt of el.selectModelPicker.options) {
+          if (opt.value === val) {
+            opt.selected = true;
+            found = true;
+            break;
+          }
+        }
+        if (!found) {
+          el.selectModelPicker.value = '__custom__';
+        }
+      }
       saveSettingsFromUI();
     });
 
@@ -1054,13 +1140,18 @@ Allegati: ${shotsCount} screenshot. Produci il JSON richiesto.`;
 
       try {
         const models = await fetchModelsList(prov, apiKey, settings);
-        el.datalistModels.replaceChildren();
-        for (const m of models) {
-          const opt = document.createElement('option');
-          opt.value = m;
-          el.datalistModels.appendChild(opt);
+        if (models.length > 0) {
+          updateProviderFields(models);
+          if (!models.includes(el.inputModel.value)) {
+            const preferred = models.find(m => m.includes('3.8-flash') || m.includes('3.5-flash') || m.includes('flash')) || models[0];
+            el.inputModel.value = preferred;
+            if (el.selectModelPicker) el.selectModelPicker.value = preferred;
+            saveSettingsFromUI();
+          }
+          showToast(`${models.length} modelli caricati dal provider`);
+        } else {
+          showToast('Nessun modello trovato');
         }
-        showToast(`${models.length} modelli caricati`);
       } catch (err) {
         showError('Impossibile recuperare i modelli', err.message);
       } finally {
@@ -1088,6 +1179,7 @@ Allegati: ${shotsCount} screenshot. Produci il JSON richiesto.`;
         return data.models
           .filter(m => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
           .map(m => m.name.replace(/^models\//, ''))
+          .filter(m => !m.includes('embedding') && !m.includes('aqa') && !m.includes('imagen') && !m.includes('text-bison') && !m.includes('chat-bison'))
           .sort();
       } else {
         const defaultBase = provider === 'compat-chat' ? '' : DEFAULT_BASE_URLS.openai;
@@ -1430,13 +1522,21 @@ Allegati: ${shotsCount} screenshot. Produci il JSON richiesto.`;
 
         if (isTimedOut || err.name === 'AbortError' || err === 'timeout') {
           showError(
-            'Il modello non ha risposto in 90 secondi. Riprova o scegli un modello più veloce (es. gemini-2.5-flash) in Impostazioni.',
+            'Il modello non ha risposto in 90 secondi. Riprova o scegli un altro modello (es. gemini-3.8-flash o gemini-3.5-flash) in Impostazioni.',
             techInfo
           );
           return;
         }
 
         const msg = err.message || '';
+        if (msg.includes('503') || msg.includes('high demand') || msg.includes('temporarily') || msg.includes('overloaded')) {
+          showError(
+            'Il modello selezionato è temporaneamente sovraccarico (HTTP 503: High demand). Scegli un modello alternativo dal menu in Impostazioni.',
+            techInfo
+          );
+          return;
+        }
+
         if (msg.includes('401') || msg.includes('403') || msg.includes('API key') || msg.includes('invalid_api_key')) {
           showError('Il provider ha rifiutato la chiave. Controlla chiave e provider in Impostazioni.', techInfo);
         } else if (msg.includes('404') || msg.includes('model_not_found') || msg.includes('not found')) {
@@ -1455,8 +1555,8 @@ Allegati: ${shotsCount} screenshot. Produci il JSON richiesto.`;
       }
     });
 
-    async function executeGeneration(prov, apiKey, userMsg, imagesBase64, signal, isRetry = false) {
-      const model = settings.models[prov] || DEFAULT_MODELS[prov];
+    async function executeGeneration(prov, apiKey, userMsg, imagesBase64, signal, isRetry = false, overrideModel = null) {
+      const model = overrideModel || settings.models[prov] || DEFAULT_MODELS[prov];
       const baseUrl = prov === 'compat-chat' ? settings.baseUrls.compat : settings.baseUrls.openai;
 
       const reqSpec = buildRequest(prov, {
@@ -1508,6 +1608,17 @@ Allegati: ${shotsCount} screenshot. Produci il JSON richiesto.`;
             errDetails += `: ${errData.error.message}`;
           }
         } catch (e) {}
+
+        // Fallback automatico se 503 (sovraccarico temporaneo) su Gemini
+        if (res.status === 503 && prov === 'gemini' && !isRetry) {
+          const fallbackModel = (model === 'gemini-3.8-flash') ? 'gemini-3.5-flash' : 'gemini-3.8-flash';
+          console.warn(`Modello ${model} ha restituito 503 (sovraccarico). Tentativo automatico con ${fallbackModel}...`);
+          if (el.loadingStatusText) {
+            el.loadingStatusText.textContent = `Modello sovraccarico, provo ${fallbackModel}…`;
+          }
+          return executeGeneration(prov, apiKey, userMsg, imagesBase64, signal, true, fallbackModel);
+        }
+
         throw new Error(errDetails);
       }
 
