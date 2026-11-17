@@ -1,0 +1,16 @@
+{
+  "name": "wod-balance-extension",
+  "version": "1.0.0",
+  "description": "WOD Balance Zepp OS Workout Extension for Amazfit Balance",
+  "main": "app.js",
+  "scripts": {
+    "build": "/Users/luigigallo/.npm-global/bin/zeus build",
+    "dev": "/Users/luigigallo/.npm-global/bin/zeus dev",
+    "preview": "/Users/luigigallo/.npm-global/bin/zeus preview"
+  },
+  "author": "Luigi Gallo",
+  "license": "MIT",
+  "devDependencies": {
+    "@zeppos/device-types": "^3.0.0"
+  }
+}
