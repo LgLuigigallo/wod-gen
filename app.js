@@ -911,6 +911,17 @@ Allegati: ${shotsCount} screenshot. Produci il JSON richiesto.`;
 
       el.inputModel.value = settings.models[prov] || DEFAULT_MODELS[prov] || '';
 
+      // Popola suggerimenti modelli nel datalist
+      el.datalistModels.replaceChildren();
+      const suggestions = (prov === 'gemini')
+        ? ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-flash-latest']
+        : ['gpt-4o-mini', 'gpt-4o', 'gpt-5-mini', 'gpt-5-codex'];
+      for (const s of suggestions) {
+        const opt = document.createElement('option');
+        opt.value = s;
+        el.datalistModels.appendChild(opt);
+      }
+
       if (prov === 'openai-responses' || prov === 'openai-chat') {
         el.groupBaseUrl.style.display = 'block';
         el.inputBaseUrl.value = settings.baseUrls.openai || DEFAULT_BASE_URLS.openai;
@@ -1316,19 +1327,30 @@ Allegati: ${shotsCount} screenshot. Produci il JSON richiesto.`;
       window.scrollTo(0, 0);
     }
 
+    let userCancelled = false;
+    let loadingTimerInterval = null;
+    let startTime = 0;
+
     // Annulla generazione
     el.btnCancelGeneration.addEventListener('click', () => {
+      userCancelled = true;
+      if (loadingTimerInterval) {
+        clearInterval(loadingTimerInterval);
+        loadingTimerInterval = null;
+      }
       if (abortController) {
         abortController.abort();
         abortController = null;
       }
       showScreen('home');
+      hideError();
       showToast('Analisi annullata');
     });
 
     // FLUSSO GENERAZIONE SCHEDA
     el.btnGenerate.addEventListener('click', async () => {
       hideError();
+      userCancelled = false;
       const prov = settings.provider;
       const keyGroup = (prov === 'gemini') ? 'gemini' : (prov === 'compat-chat' ? 'compat' : 'openai');
       const apiKey = settings.keys[keyGroup];
@@ -1344,10 +1366,23 @@ Allegati: ${shotsCount} screenshot. Produci il JSON richiesto.`;
       }
 
       showScreen('loading');
-      el.loadingStatusText.textContent = 'Lettura dello screenshot…';
+      startTime = Date.now();
+      el.loadingStatusText.textContent = 'Lettura dello screenshot… (0s)';
+
+      if (loadingTimerInterval) clearInterval(loadingTimerInterval);
+      loadingTimerInterval = setInterval(() => {
+        const elapsed = Math.round((Date.now() - startTime) / 1000);
+        if (elapsed < 3) {
+          el.loadingStatusText.textContent = `Lettura dello screenshot… (${elapsed}s)`;
+        } else {
+          el.loadingStatusText.textContent = `Costruzione della scheda per l'orologio… (${elapsed}s)`;
+        }
+      }, 1000);
 
       abortController = new AbortController();
+      let isTimedOut = false;
       const timeoutId = setTimeout(() => {
+        isTimedOut = true;
         if (abortController) {
           abortController.abort('timeout');
         }
@@ -1365,15 +1400,12 @@ Allegati: ${shotsCount} screenshot. Produci il JSON richiesto.`;
 
         const imagesBase64 = currentShots.map(s => s.base64);
 
-        // Aggiorna stato loading
-        setTimeout(() => {
-          if (el.loadingStatusText) {
-            el.loadingStatusText.textContent = 'Costruzione della scheda per l\'orologio…';
-          }
-        }, 1500);
-
         let plan = await executeGeneration(prov, apiKey, userMsg, imagesBase64, abortController.signal, false);
         clearTimeout(timeoutId);
+        if (loadingTimerInterval) {
+          clearInterval(loadingTimerInterval);
+          loadingTimerInterval = null;
+        }
 
         currentPlan = plan;
         saveHistoryItem(plan);
@@ -1381,26 +1413,42 @@ Allegati: ${shotsCount} screenshot. Produci il JSON richiesto.`;
         showResultScreen(plan);
       } catch (err) {
         clearTimeout(timeoutId);
+        if (loadingTimerInterval) {
+          clearInterval(loadingTimerInterval);
+          loadingTimerInterval = null;
+        }
         showScreen('home');
 
-        if (err.name === 'AbortError' || err === 'timeout') {
-          showError('Il modello non ha risposto in 90 secondi. Riprova.');
+        if (userCancelled) {
+          hideError();
+          return;
+        }
+
+        const elapsedSec = Math.round((Date.now() - startTime) / 1000);
+        const currentModel = settings.models[prov] || DEFAULT_MODELS[prov] || 'predefinito';
+        const techInfo = `Provider: ${prov}\nModello: ${currentModel}\nTempo trascorso: ${elapsedSec}s\nErrore: ${err.message || err.name || err}`;
+
+        if (isTimedOut || err.name === 'AbortError' || err === 'timeout') {
+          showError(
+            'Il modello non ha risposto in 90 secondi. Riprova o scegli un modello più veloce (es. gemini-2.5-flash) in Impostazioni.',
+            techInfo
+          );
           return;
         }
 
         const msg = err.message || '';
         if (msg.includes('401') || msg.includes('403') || msg.includes('API key') || msg.includes('invalid_api_key')) {
-          showError('Il provider ha rifiutato la chiave. Controlla chiave e provider in Impostazioni.', msg);
+          showError('Il provider ha rifiutato la chiave. Controlla chiave e provider in Impostazioni.', techInfo);
         } else if (msg.includes('404') || msg.includes('model_not_found') || msg.includes('not found')) {
-          showError('Modello non trovato. Usa Carica modelli e sceglilo dall\'elenco.', msg);
+          showError('Modello non trovato. Usa Carica modelli e sceglilo dall\'elenco.', techInfo);
         } else if (msg.includes('429') || msg.includes('quota') || msg.includes('rate_limit') || msg.includes('insufficient_quota')) {
-          showError('Troppe richieste o credito finito. Riprova tra poco o controlla il piano del provider.', msg);
+          showError('Troppe richieste o credito finito. Riprova tra poco o controlla il piano del provider.', techInfo);
         } else if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('CORS')) {
-          showError('Richiesta non riuscita. Controlla la connessione. Se usi un provider personalizzato, controlla Base URL e CORS.', msg);
+          showError('Richiesta non riuscita. Controlla la connessione. Se usi un provider personalizzato, controlla Base URL e CORS.', techInfo);
         } else if (msg.includes('bloccato la richiesta')) {
-          showError(msg);
+          showError(msg, techInfo);
         } else {
-          showError(msg, err.stack || '');
+          showError(msg || 'Errore durante la generazione della scheda.', techInfo);
         }
       } finally {
         abortController = null;

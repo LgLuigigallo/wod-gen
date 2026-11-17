@@ -1,5 +1,5 @@
 // WOD → Balance Service Worker
-const CACHE_NAME = 'wb-v1';
+const CACHE_NAME = 'wb-v2';
 const SHARED_CACHE_NAME = 'shared-shots';
 
 const APP_SHELL = [
