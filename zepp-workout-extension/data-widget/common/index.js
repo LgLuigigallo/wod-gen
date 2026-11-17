@@ -10,12 +10,37 @@ import {
 } from '@zos/ui'
 import { Vibrator, VIBRATOR_SCENE_SHORT_STRONG, VIBRATOR_SCENE_DURATION } from '@zos/sensor'
 import { localStorage } from '@zos/storage'
+import * as ble from '@zos/ble'
 import { MessageBuilder } from '../../shared/message'
 
 let messageBuilder = null
 
-// Preset di allenamento WOD
+// Preset di allenamento WOD (con in cima il WOD Functional Hero X)
 const MODES = [
+  {
+    id: 'FORTIME',
+    title: 'Functional Hero X',
+    type: 'countup',
+    intervalSec: null,
+    totalRounds: null,
+    totalDurationSec: null,
+    exercises: [
+      '5 Roll and Reach',
+      '10 Deadbug',
+      '10 Dynamic Squat Stretch',
+      '5 Worlds Greatest Stretch (L/R)',
+      '5 Tempo Barbell Back Squat',
+      '8 Back Rack Box Step Up (each leg)',
+      '6 Back Rack Box Step Up (each leg)',
+      '4 Back Rack Box Step Up (each leg)',
+      '500m Run',
+      '15 DB Front Squats (2x22.5/16 kg)',
+      '50m Farmers Carry (2x22.5/16 kg)',
+      '500m Run',
+      '15 DB Deadlifts (2x22.5/16 kg)',
+      '20m Sled Push with Box'
+    ]
+  },
   {
     id: 'EMOM',
     title: 'EMOM 12\'',
@@ -49,19 +74,6 @@ const MODES = [
       '5 Trazioni (Pull-ups)',
       '10 Piegamenti (Push-ups)',
       '15 Squat a corpo libero'
-    ]
-  },
-  {
-    id: 'FORTIME',
-    title: 'FOR TIME',
-    type: 'countup',
-    intervalSec: null,
-    totalRounds: null,
-    totalDurationSec: null,
-    exercises: [
-      '21 Thruster + 21 Trazioni',
-      '15 Thruster + 15 Trazioni',
-      '9 Thruster + 9 Trazioni'
     ]
   },
   {
@@ -118,8 +130,8 @@ function getStatusHeaderText() {
   } else if (cur.id === 'AMRAP' || cur.id === 'FORTIME') {
     const numEx = (cur.exercises && cur.exercises.length) || 1
     const currentExNum = (exerciseIndex % numEx) + 1
-    const prefix = cur.id === 'AMRAP' ? 'AMRAP' : 'FOR TIME'
-    return `${prefix} · GIRO ${currentRound} (ES. ${currentExNum}/${numEx})`
+    const prefix = cur.id === 'AMRAP' ? 'AMRAP' : (cur.title ? cur.title.slice(0, 14).toUpperCase() : 'FOR TIME')
+    return `${prefix} · ES. ${currentExNum}/${numEx}`
   } else if (cur.id === 'TABATA') {
     const cycleSec = elapsedSec % 30
     const phase = cycleSec < 20 ? 'LAVORO' : 'RIPOSO'
@@ -172,7 +184,7 @@ function getNextExerciseText() {
     const numEx = cur.exercises.length
     const nextIdx = (exerciseIndex + 1) % numEx
     if (nextIdx === 0) {
-      return `↳ Prossimo: Fine Giro ${currentRound} ➔ ${cleanExerciseName(cur.exercises[0])}`
+      return `↳ Prossimo: Fine Serie ➔ ${cleanExerciseName(cur.exercises[0])}`
     }
     return `↳ Prossimo: ${cleanExerciseName(cur.exercises[nextIdx])}`
   }
@@ -196,7 +208,7 @@ function getActionButtonText() {
   const numEx = (cur.exercises && cur.exercises.length) || 1
   const nextIdx = (exerciseIndex + 1) % numEx
   if (nextIdx === 0) {
-    return `FINE GIRO ${currentRound} ✓`
+    return `ULTIMO ES. COMPLETATO ✓`
   }
   return 'COMPLETATO ✓ (AVANZA)'
 }
@@ -341,10 +353,10 @@ function handleCompleteExercise() {
     const numEx = (cur.exercises && cur.exercises.length) || 1
     exerciseIndex++
 
-    // Se abbiamo completato tutti gli esercizi del giro
+    // Se abbiamo completato tutti gli esercizi della sequenza
     if (exerciseIndex % numEx === 0) {
       currentRound++
-      triggerVibration(VIBRATOR_SCENE_DURATION) // Vibrazione prolungata per giro finito
+      triggerVibration(VIBRATOR_SCENE_DURATION) // Doppia vibrazione festosa
     }
 
     updateRoundView()
@@ -395,29 +407,41 @@ function stopTimerLoop() {
 function loadSavedWod() {
   try {
     const saved = localStorage.getItem('active_wod')
-    if (saved && saved.title && saved.exercises && saved.exercises.length > 0) {
+    if (saved && saved.exercises && saved.exercises.length > 0) {
       const existingIdx = MODES.findIndex((m) => m.isCustom)
+      const customWod = { ...saved, isCustom: true }
       if (existingIdx >= 0) {
-        MODES[existingIdx] = { ...saved, isCustom: true }
+        MODES[existingIdx] = customWod
       } else {
-        MODES.unshift({ ...saved, isCustom: true })
+        MODES.unshift(customWod)
       }
     }
   } catch (e) {}
 }
 
 function applyNewWod(wod) {
-  if (!wod || !wod.title || !wod.exercises || wod.exercises.length === 0) return
+  if (!wod || !wod.exercises || wod.exercises.length === 0) return
   try {
     localStorage.setItem('active_wod', wod)
   } catch (e) {}
 
+  const normalizedWod = {
+    id: wod.id || 'FORTIME',
+    title: wod.title || 'WOD Personalizzato',
+    type: wod.type || 'countup',
+    intervalSec: wod.intervalSec || (wod.id === 'EMOM' ? 60 : null),
+    totalRounds: wod.totalRounds || (wod.id === 'EMOM' ? (wod.exercises.length || 12) : null),
+    totalDurationSec: wod.totalDurationSec || null,
+    exercises: wod.exercises,
+    isCustom: true
+  }
+
   const existingIdx = MODES.findIndex((m) => m.isCustom)
   if (existingIdx >= 0) {
-    MODES[existingIdx] = { ...wod, isCustom: true }
+    MODES[existingIdx] = normalizedWod
     modeIndex = existingIdx
   } else {
-    MODES.unshift({ ...wod, isCustom: true })
+    MODES.unshift(normalizedWod)
     modeIndex = 0
   }
 
@@ -443,7 +467,17 @@ DataWidget({
     loadSavedWod()
 
     try {
-      messageBuilder = new MessageBuilder()
+      const app = typeof getApp === 'function' ? getApp() : null
+      messageBuilder = (app && app._options && app._options.globalData && app._options.globalData.messageBuilder)
+        ? app._options.globalData.messageBuilder
+        : new MessageBuilder({
+            appId: 1058200,
+            appDevicePort: 20,
+            appSidePort: 0,
+            ble
+          })
+
+      messageBuilder.connect()
       messageBuilder.listen(() => {})
 
       messageBuilder.on('call', ({ payload: buf }) => {
@@ -451,7 +485,7 @@ DataWidget({
           const data = messageBuilder.buf2Json(buf)
           if (data && data.method === 'SYNC_WOD' && data.params) {
             applyNewWod(data.params)
-          } else if (data && data.title && data.exercises) {
+          } else if (data && data.exercises) {
             applyNewWod(data)
           }
         } catch (e) {}
@@ -601,7 +635,7 @@ DataWidget({
       w: 392,
       h: 88,
       color: 0xffffff,
-      text_size: 28,
+      text_size: 26,
       align_h: align.CENTER_H,
       align_v: align.CENTER_V,
       text_style: text_style.WRAP,
@@ -622,7 +656,7 @@ DataWidget({
       align_h: align.CENTER_H,
       align_v: align.CENTER_V,
       text_style: text_style.NONE,
-      text: '01:00'
+      text: '00:00'
     })
 
     // 6. Prossimo Esercizio in arrivo (y: 324 - 356)
