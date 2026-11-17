@@ -11,14 +11,14 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
   <link rel="apple-touch-icon" href="icon-192.png">
-  <link rel="stylesheet" href="styles.css?v=3.1">
+  <link rel="stylesheet" href="styles.css?v=3.2">
 </head>
 <body>
 
   <main class="app-container">
     <!-- Intestazione Principale -->
     <header class="app-header">
-      <h1 class="brand-title">WOD <span class="accent-span">→</span> Balance <span class="version-badge">v3.1</span></h1>
+      <h1 class="brand-title">WOD <span class="accent-span">→</span> Balance <span class="version-badge">v3.2</span></h1>
       <button type="button" id="btn-open-settings" class="btn btn-icon" aria-label="Apri impostazioni">
         ⚙️ Impostazioni
       </button>
@@ -82,6 +82,17 @@
             <label for="opt-carichi-converti">lb → kg</label>
           </div>
         </fieldset>
+
+        <div class="option-group">
+          <label for="home-model-select" class="option-label">Modello AI</label>
+          <select id="home-model-select" class="select-input">
+            <option value="gemini-3.8-flash">Gemini 3.8 Flash (Veloce, consigliato)</option>
+            <option value="gemini-3.5-flash">Gemini 3.5 Flash</option>
+            <option value="gemini-3-flash">Gemini 3 Flash</option>
+            <option value="gemini-3.5-flash-lite">Gemini 3.5 Flash Lite</option>
+            <option value="gpt-4o-mini">OpenAI GPT-4o Mini</option>
+          </select>
+        </div>
 
         <div class="option-group">
           <label for="input-notes" class="option-label">Note per l'AI (opzionale)</label>
@@ -152,7 +163,7 @@
   </main>
 
   <!-- PANNELLO IMPOSTAZIONI A SCHERMO INTERO (Sezione 5.4 & 7) -->
-  <dialog id="settings-modal" class="modal-overlay" aria-labelledby="settings-heading" aria-modal="true">
+  <div id="settings-modal" class="modal-overlay" role="dialog" aria-labelledby="settings-heading" aria-modal="true" aria-hidden="true" style="display: none;">
     <div class="modal-content">
       <header class="modal-header">
         <h2 id="settings-heading" class="modal-title">Impostazioni</h2>
@@ -255,12 +266,19 @@
       <!-- Aggiornamento app e cache -->
       <div class="settings-group" style="padding-top: 12px; border-top: 1px solid var(--surface-border); display: flex; flex-direction: column; gap: 8px;">
         <div style="display: flex; justify-content: space-between; align-items: center;">
-          <span style="font-size: 13px; color: var(--text-muted);">Versione installata: <strong>v3.1</strong></span>
+          <span style="font-size: 13px; color: var(--text-muted);">Versione installata: <strong>v3.2</strong></span>
           <button type="button" id="btn-force-update" class="btn btn-secondary btn-small">Ricarica & Aggiorna</button>
         </div>
       </div>
+
+      <!-- Pulsante Salva e Chiudi in fondo al pannello -->
+      <div class="settings-group" style="padding-top: 10px;">
+        <button type="button" id="btn-close-settings-bottom" class="btn btn-primary" style="width: 100%;">
+          Salva e Chiudi
+        </button>
+      </div>
     </div>
-  </dialog>
+  </div>
 
   <!-- VISTA PALESTRA A SCHERMO INTERO (COULD FEATURE) -->
   <div id="gym-overlay" class="gym-overlay" role="dialog" aria-modal="true" aria-label="Vista Palestra">
@@ -282,6 +300,6 @@
   <!-- Toast Notifiche -->
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-  <script src="app.js?v=3.1"></script>
+  <script src="app.js?v=3.2"></script>
 </body>
 </html>

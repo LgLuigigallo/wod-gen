@@ -73,8 +73,7 @@ FORMATO DI USCITA
       'gemini-3-flash',
       'gemini-3.5-flash-lite',
       'gemini-3.8-flash-lite',
-      'gemini-2.0-flash',
-      'gemini-flash-latest'
+      'gemini-2.0-flash'
     ],
     'openai-responses': [
       'gpt-4o-mini',
@@ -598,16 +597,22 @@ Allegati: ${shotsCount} screenshot. Produci il JSON richiesto.`;
     }
 
     let storedGemini = STORAGE.get('wb.model.gemini');
-    if (!storedGemini || storedGemini.includes('2.5') || storedGemini === 'gemini-1.5-flash') {
+    if (!storedGemini || storedGemini === 'gemini-flash-latest' || storedGemini.includes('2.5') || storedGemini.includes('1.5')) {
       storedGemini = DEFAULT_MODELS.gemini;
+      STORAGE.set('wb.model.gemini', DEFAULT_MODELS.gemini);
+      STORAGE.set('wb.model.gemini', DEFAULT_MODELS.gemini, true);
     }
     let storedOpenAiResp = STORAGE.get('wb.model.openai-responses');
     if (!storedOpenAiResp || storedOpenAiResp === 'gpt-5-mini') {
       storedOpenAiResp = DEFAULT_MODELS['openai-responses'];
+      STORAGE.set('wb.model.openai-responses', DEFAULT_MODELS['openai-responses']);
+      STORAGE.set('wb.model.openai-responses', DEFAULT_MODELS['openai-responses'], true);
     }
     let storedOpenAiChat = STORAGE.get('wb.model.openai-chat');
     if (!storedOpenAiChat || storedOpenAiChat === 'gpt-5-mini') {
       storedOpenAiChat = DEFAULT_MODELS['openai-chat'];
+      STORAGE.set('wb.model.openai-chat', DEFAULT_MODELS['openai-chat']);
+      STORAGE.set('wb.model.openai-chat', DEFAULT_MODELS['openai-chat'], true);
     }
 
     const models = {
@@ -809,6 +814,7 @@ Allegati: ${shotsCount} screenshot. Produci il JSON richiesto.`;
       btnOpenSettings: document.getElementById('btn-open-settings'),
       settingsModal: document.getElementById('settings-modal'),
       btnCloseSettings: document.getElementById('btn-close-settings'),
+      btnCloseSettingsBottom: document.getElementById('btn-close-settings-bottom'),
 
       // Settings Fields
       selectProvider: document.getElementById('set-provider'),
@@ -836,6 +842,7 @@ Allegati: ${shotsCount} screenshot. Produci il JSON richiesto.`;
       fileInput: document.getElementById('file-input'),
       btnSelectFiles: document.getElementById('btn-select-files'),
       thumbsList: document.getElementById('thumbs-list'),
+      homeModelSelect: document.getElementById('home-model-select'),
       radioCorsaAperto: document.getElementById('opt-corsa-aperto'),
       radioCorsaTapis: document.getElementById('opt-corsa-tapis'),
       radioRestScreenshot: document.getElementById('opt-rest-screenshot'),
@@ -968,7 +975,55 @@ Allegati: ${shotsCount} screenshot. Produci il JSON richiesto.`;
         el.groupBaseUrl.style.display = 'none';
       }
 
+      syncHomeModelSelect();
       updateGenerateButtonState();
+    }
+
+    function syncHomeModelSelect() {
+      if (!el.homeModelSelect) return;
+      const prov = settings.provider;
+      const curModel = settings.models[prov] || DEFAULT_MODELS[prov] || '';
+      const suggestions = DEFAULT_SUGGESTIONS[prov] || [curModel];
+
+      el.homeModelSelect.replaceChildren();
+
+      let matched = false;
+      for (const m of suggestions) {
+        const opt = document.createElement('option');
+        opt.value = m;
+        let label = m;
+        if (m === 'gemini-3.8-flash') label = 'Gemini 3.8 Flash (Consigliato, rapido)';
+        else if (m === 'gemini-3.5-flash') label = 'Gemini 3.5 Flash';
+        else if (m === 'gemini-3-flash') label = 'Gemini 3 Flash';
+        else if (m === 'gemini-3.5-flash-lite') label = 'Gemini 3.5 Flash Lite';
+        else if (m === 'gemini-3.8-flash-lite') label = 'Gemini 3.8 Flash Lite';
+        else if (m === 'gpt-4o-mini') label = 'OpenAI GPT-4o Mini (Consigliato)';
+        opt.textContent = label;
+        if (m === curModel) {
+          opt.selected = true;
+          matched = true;
+        }
+        el.homeModelSelect.appendChild(opt);
+      }
+
+      if (!matched && curModel) {
+        const customOpt = document.createElement('option');
+        customOpt.value = curModel;
+        customOpt.textContent = curModel;
+        customOpt.selected = true;
+        el.homeModelSelect.appendChild(customOpt);
+      }
+    }
+
+    if (el.homeModelSelect) {
+      el.homeModelSelect.addEventListener('change', () => {
+        const selected = el.homeModelSelect.value;
+        settings.models[settings.provider] = selected;
+        STORAGE.set(`wb.model.${settings.provider}`, selected);
+        if (el.inputModel) el.inputModel.value = selected;
+        if (el.selectModelPicker) el.selectModelPicker.value = selected;
+        showToast(`Modello attivo: ${selected}`);
+      });
     }
 
     function populateModelPicker(modelsList, activeModel) {
@@ -1019,6 +1074,7 @@ Allegati: ${shotsCount} screenshot. Produci il JSON richiesto.`;
       ];
 
       saveSettings(settings);
+      syncHomeModelSelect();
       updateGenerateButtonState();
     }
 
@@ -1029,13 +1085,24 @@ Allegati: ${shotsCount} screenshot. Produci il JSON richiesto.`;
       el.boxTestStatus.className = 'status-box';
       el.settingsModal.classList.add('open');
       el.settingsModal.setAttribute('aria-hidden', 'false');
+      el.settingsModal.style.display = 'block';
+      document.body.style.overflow = 'hidden';
+      el.settingsModal.scrollTop = 0;
     });
 
-    el.btnCloseSettings.addEventListener('click', () => {
+    function closeSettingsModal() {
       saveSettingsFromUI();
       el.settingsModal.classList.remove('open');
       el.settingsModal.setAttribute('aria-hidden', 'true');
-    });
+      el.settingsModal.style.display = 'none';
+      document.body.style.overflow = '';
+      syncHomeModelSelect();
+    }
+
+    el.btnCloseSettings.addEventListener('click', closeSettingsModal);
+    if (el.btnCloseSettingsBottom) {
+      el.btnCloseSettingsBottom.addEventListener('click', closeSettingsModal);
+    }
 
     el.selectProvider.addEventListener('change', () => {
       saveSettingsFromUI();
@@ -1557,7 +1624,17 @@ Allegati: ${shotsCount} screenshot. Produci il JSON richiesto.`;
     });
 
     async function executeGeneration(prov, apiKey, userMsg, imagesBase64, signal, isRetry = false, overrideModel = null) {
-      const model = overrideModel || settings.models[prov] || DEFAULT_MODELS[prov];
+      let model = overrideModel || settings.models[prov] || DEFAULT_MODELS[prov];
+
+      // Auto-migrazione attiva se il modello salvato è deprecato o non responsive
+      if (prov === 'gemini' && (!model || model === 'gemini-flash-latest' || model.includes('2.5') || model.includes('1.5'))) {
+        model = 'gemini-3.8-flash';
+        settings.models['gemini'] = 'gemini-3.8-flash';
+        STORAGE.set('wb.model.gemini', 'gemini-3.8-flash');
+        if (el.inputModel) el.inputModel.value = 'gemini-3.8-flash';
+        syncHomeModelSelect();
+      }
+
       const baseUrl = prov === 'compat-chat' ? settings.baseUrls.compat : settings.baseUrls.openai;
 
       const reqSpec = buildRequest(prov, {
@@ -2100,7 +2177,7 @@ Allegati: ${shotsCount} screenshot. Produci il JSON richiesto.`;
     async function initPWA() {
       if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
         try {
-          const reg = await navigator.serviceWorker.register('sw.js?v=3.1');
+          const reg = await navigator.serviceWorker.register('sw.js?v=3.2');
           await reg.update();
         } catch (e) {
           // Fallimento silenzioso
