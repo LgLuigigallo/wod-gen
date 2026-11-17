@@ -5,11 +5,12 @@ import {
   text_style,
   sport_data,
   edit_widget_group_type,
-  prop
+  prop,
+  event
 } from '@zos/ui'
 import { Vibrator, VIBRATOR_SCENE_SHORT_STRONG, VIBRATOR_SCENE_DURATION } from '@zos/sensor'
 
-// Preset di allenamento supportati per CrossFit / Allenamento Funzionale
+// Preset WOD
 const MODES = [
   {
     id: 'EMOM',
@@ -20,15 +21,15 @@ const MODES = [
     totalDurationSec: 720,
     exercises: [
       'Min 1: 15 Burpees',
-      'Min 2: 20 Kettlebell Swings',
+      'Min 2: 20 KB Swings',
       'Min 3: 15 Box Jumps',
       'Min 4: Recupero / Rest',
       'Min 5: 15 Burpees',
-      'Min 6: 20 Kettlebell Swings',
+      'Min 6: 20 KB Swings',
       'Min 7: 15 Box Jumps',
       'Min 8: Recupero / Rest',
       'Min 9: 15 Burpees',
-      'Min 10: 20 Kettlebell Swings',
+      'Min 10: 20 KB Swings',
       'Min 11: 15 Box Jumps',
       'Min 12: Max Calorie Rower'
     ]
@@ -52,14 +53,14 @@ const MODES = [
     totalRounds: null,
     totalDurationSec: null,
     exercises: [
-      'Completa il WOD nel minor tempo possibile. Premi +1 ROUND per ogni giro completato.'
+      'Completa il WOD. Premi +1 ROUND a ogni giro.'
     ]
   },
   {
     id: 'TABATA',
     title: 'TABATA 4\' (8 Rnd)',
     type: 'tabata',
-    intervalSec: 30, // 20s lavoro + 10s rest
+    intervalSec: 30,
     totalRounds: 8,
     totalDurationSec: 240,
     exercises: [
@@ -68,38 +69,196 @@ const MODES = [
   }
 ]
 
+let modeIndex = 0
+let currentRound = 1
+let elapsedSec = 0
+let timerInterval = null
+let vibrator = null
+
+// Riferimenti Widget UI
+let txtModeBadge = null
+let txtRound = null
+let txtTimer = null
+let txtTimerSub = null
+let txtExercise = null
+let btnRound = null
+let btnMode = null
+
+function formatTime(totalSec) {
+  const m = Math.floor(totalSec / 60)
+  const s = totalSec % 60
+  const mm = m < 10 ? `0${m}` : `${m}`
+  const ss = s < 10 ? `0${s}` : `${s}`
+  return `${mm}:${ss}`
+}
+
+function getRoundText() {
+  const cur = MODES[modeIndex]
+  if (cur.totalRounds) {
+    return `RND ${currentRound}/${cur.totalRounds}`
+  }
+  return `ROUND ${currentRound}`
+}
+
+function getCurrentExerciseText() {
+  const cur = MODES[modeIndex]
+  if (cur.exercises && cur.exercises.length > 0) {
+    const idx = (currentRound - 1) % cur.exercises.length
+    return cur.exercises[idx]
+  }
+  return 'Lavoro continuo'
+}
+
+function triggerVibration(scene) {
+  if (!vibrator) return
+  try {
+    vibrator.stop()
+    vibrator.setMode(scene)
+    vibrator.start()
+  } catch (e) {}
+}
+
+function updateRoundView() {
+  if (txtRound) {
+    txtRound.setProperty(prop.MORE, { text: getRoundText() })
+  }
+  if (txtExercise) {
+    txtExercise.setProperty(prop.MORE, { text: getCurrentExerciseText() })
+  }
+}
+
+function handleNextRound() {
+  triggerVibration(VIBRATOR_SCENE_SHORT_STRONG)
+  currentRound++
+  updateRoundView()
+}
+
+function cycleMode() {
+  triggerVibration(VIBRATOR_SCENE_SHORT_STRONG)
+  modeIndex = (modeIndex + 1) % MODES.length
+  currentRound = 1
+  elapsedSec = 0
+
+  const cur = MODES[modeIndex]
+  if (txtModeBadge) {
+    txtModeBadge.setProperty(prop.MORE, { text: cur.title })
+  }
+  updateRoundView()
+  updateTimerDisplay()
+}
+
+function updateTimerDisplay() {
+  if (!txtTimer || !txtTimerSub) return
+  const cur = MODES[modeIndex]
+
+  if (cur.id === 'EMOM') {
+    const secInMin = elapsedSec % 60
+    const secLeft = secInMin === 0 && elapsedSec > 0 ? 60 : (60 - secInMin)
+    txtTimer.setProperty(prop.MORE, { text: formatTime(secLeft) })
+    txtTimerSub.setProperty(prop.MORE, { text: `FINE MINUTO: ${secLeft}s` })
+  } else if (cur.id === 'AMRAP') {
+    const remaining = Math.max(0, cur.totalDurationSec - elapsedSec)
+    txtTimer.setProperty(prop.MORE, { text: formatTime(remaining) })
+    txtTimerSub.setProperty(prop.MORE, { text: 'TEMPO RESIDUO AMRAP' })
+  } else if (cur.id === 'TABATA') {
+    const cycleSec = elapsedSec % 30
+    if (cycleSec < 20) {
+      const workLeft = 20 - cycleSec
+      txtTimer.setProperty(prop.MORE, { text: formatTime(workLeft) })
+      txtTimerSub.setProperty(prop.MORE, { text: '🔥 LAVORO MASSIMALE' })
+    } else {
+      const restLeft = 30 - cycleSec
+      txtTimer.setProperty(prop.MORE, { text: formatTime(restLeft) })
+      txtTimerSub.setProperty(prop.MORE, { text: '💤 RECUPERO / REST' })
+    }
+  } else {
+    txtTimer.setProperty(prop.MORE, { text: formatTime(elapsedSec) })
+    txtTimerSub.setProperty(prop.MORE, { text: 'TEMPO TRASCORSO' })
+  }
+}
+
+function tickTimer() {
+  elapsedSec++
+  const cur = MODES[modeIndex]
+
+  if (cur.id === 'EMOM') {
+    const secInMin = elapsedSec % 60
+    const secLeft = secInMin === 0 ? 60 : (60 - secInMin)
+
+    if (txtTimer) txtTimer.setProperty(prop.MORE, { text: formatTime(secLeft) })
+    if (txtTimerSub) txtTimerSub.setProperty(prop.MORE, { text: `FINE MINUTO: ${secLeft}s` })
+
+    if (secLeft === 3 || secLeft === 2 || secLeft === 1) {
+      triggerVibration(VIBRATOR_SCENE_SHORT_STRONG)
+    } else if (secInMin === 0) {
+      triggerVibration(VIBRATOR_SCENE_DURATION)
+      if (cur.totalRounds && currentRound < cur.totalRounds) {
+        currentRound++
+        updateRoundView()
+      }
+    }
+  } else if (cur.id === 'AMRAP') {
+    const remaining = Math.max(0, cur.totalDurationSec - elapsedSec)
+    if (txtTimer) txtTimer.setProperty(prop.MORE, { text: formatTime(remaining) })
+    if (txtTimerSub) txtTimerSub.setProperty(prop.MORE, { text: 'TEMPO RESIDUO AMRAP' })
+    if (remaining === 0) {
+      triggerVibration(VIBRATOR_SCENE_DURATION)
+    }
+  } else if (cur.id === 'TABATA') {
+    const cycleSec = elapsedSec % 30
+    if (cycleSec < 20) {
+      const workLeft = 20 - cycleSec
+      if (txtTimer) txtTimer.setProperty(prop.MORE, { text: formatTime(workLeft) })
+      if (txtTimerSub) txtTimerSub.setProperty(prop.MORE, { text: '🔥 LAVORO MASSIMALE' })
+      if (workLeft <= 3 && workLeft > 0) {
+        triggerVibration(VIBRATOR_SCENE_SHORT_STRONG)
+      }
+    } else {
+      const restLeft = 30 - cycleSec
+      if (txtTimer) txtTimer.setProperty(prop.MORE, { text: formatTime(restLeft) })
+      if (txtTimerSub) txtTimerSub.setProperty(prop.MORE, { text: '💤 RECUPERO / REST' })
+      if (restLeft === 1) {
+        triggerVibration(VIBRATOR_SCENE_DURATION)
+        if (cur.totalRounds && currentRound < cur.totalRounds) {
+          currentRound++
+          updateRoundView()
+        }
+      }
+    }
+  } else {
+    if (txtTimer) txtTimer.setProperty(prop.MORE, { text: formatTime(elapsedSec) })
+    if (txtTimerSub) txtTimerSub.setProperty(prop.MORE, { text: 'TEMPO TRASCORSO' })
+  }
+}
+
+function startTimerLoop() {
+  if (timerInterval) clearInterval(timerInterval)
+  updateTimerDisplay()
+  timerInterval = setInterval(() => {
+    try {
+      tickTimer()
+    } catch (e) {}
+  }, 1000)
+}
+
+function stopTimerLoop() {
+  if (timerInterval) {
+    clearInterval(timerInterval)
+    timerInterval = null
+  }
+}
+
 DataWidget({
-  // Stato interno del widget
-  modeIndex: 0,
-  currentRound: 1,
-  elapsedSec: 0,
-  timerInterval: null,
-  vibrator: null,
-
-  // Riferimenti ai widget UI
-  txtModeBadge: null,
-  txtRound: null,
-  txtTimer: null,
-  txtTimerSub: null,
-  txtExercise: null,
-  btnRound: null,
-  btnMode: null,
-
   onInit() {
     try {
-      this.vibrator = new Vibrator()
+      vibrator = new Vibrator()
     } catch (e) {
-      this.vibrator = null
+      vibrator = null
     }
   },
 
   build() {
-    this.createUI()
-    this.startTimer()
-  },
-
-  createUI() {
-    const curMode = MODES[this.modeIndex]
+    const curMode = MODES[modeIndex]
 
     // 1. Sfondo scuro elegante
     createWidget(widget.FILL_RECT, {
@@ -110,15 +269,15 @@ DataWidget({
       color: 0x000000
     })
 
-    // 2. HUD Biometrico Superiore (Frequenza Cardiaca e Calorie ufficiali Zepp)
+    // 2. HUD Biometrico Superiore (Frequenza Cardiaca e Calorie)
     // Frequenza Cardiaca (Sinistra)
     createWidget(widget.TEXT, {
       x: 75,
-      y: 20,
+      y: 28,
       w: 80,
-      h: 30,
+      h: 24,
       color: 0xef4444, // Rosso cardio
-      text_size: 18,
+      text_size: 16,
       align_h: align.CENTER_H,
       align_v: align.CENTER_V,
       text: '♥ BPM'
@@ -126,31 +285,31 @@ DataWidget({
     createWidget(widget.SPORT_DATA, {
       edit_id: 1,
       x: 70,
-      y: 42,
+      y: 48,
       w: 90,
-      h: 40,
+      h: 38,
       category: edit_widget_group_type.SPORTS,
       default_type: sport_data.HR,
       optional_types: [sport_data.HR],
       count: 1,
       rect_visible: false,
-      text_size: 32,
+      text_size: 28,
       text_color: 0xffffff,
       text_x: 0,
       text_y: 0,
       text_w: 90,
-      text_h: 40,
+      text_h: 38,
       sub_text_visible: false
     })
 
     // Calorie Bruciate (Destra)
     createWidget(widget.TEXT, {
       x: 325,
-      y: 20,
+      y: 28,
       w: 80,
-      h: 30,
+      h: 24,
       color: 0xf59e0b, // Ambra Kcal
-      text_size: 18,
+      text_size: 16,
       align_h: align.CENTER_H,
       align_v: align.CENTER_V,
       text: '🔥 KCAL'
@@ -158,27 +317,27 @@ DataWidget({
     createWidget(widget.SPORT_DATA, {
       edit_id: 2,
       x: 320,
-      y: 42,
+      y: 48,
       w: 90,
-      h: 40,
+      h: 38,
       category: edit_widget_group_type.SPORTS,
       default_type: sport_data.CONSUME,
       optional_types: [sport_data.CONSUME],
       count: 1,
       rect_visible: false,
-      text_size: 32,
+      text_size: 28,
       text_color: 0xffffff,
       text_x: 0,
       text_y: 0,
       text_w: 90,
-      text_h: 40,
+      text_h: 38,
       sub_text_visible: false
     })
 
     // 3. Badge Formato WOD & Indicatore Round
-    this.txtModeBadge = createWidget(widget.TEXT, {
+    txtModeBadge = createWidget(widget.TEXT, {
       x: 80,
-      y: 88,
+      y: 90,
       w: 140,
       h: 32,
       color: 0xd97706, // Ambra scuro
@@ -189,9 +348,9 @@ DataWidget({
       text: curMode.title
     })
 
-    this.txtRound = createWidget(widget.TEXT, {
+    txtRound = createWidget(widget.TEXT, {
       x: 230,
-      y: 86,
+      y: 88,
       w: 170,
       h: 36,
       color: 0x38bdf8, // Ciano brillante
@@ -199,60 +358,60 @@ DataWidget({
       align_h: align.CENTER_H,
       align_v: align.CENTER_V,
       text_style: text_style.NONE,
-      text: this.getRoundText()
+      text: getRoundText()
     })
 
     // 4. Timer Gigante Centrale ad alta visibilità
-    this.txtTimer = createWidget(widget.TEXT, {
+    txtTimer = createWidget(widget.TEXT, {
       x: 0,
-      y: 124,
+      y: 122,
       w: 480,
-      h: 78,
+      h: 76,
       color: 0xffffff,
-      text_size: 68,
+      text_size: 64,
       align_h: align.CENTER_H,
       align_v: align.CENTER_V,
       text_style: text_style.NONE,
-      text: '00:00'
+      text: '01:00'
     })
 
-    this.txtTimerSub = createWidget(widget.TEXT, {
+    txtTimerSub = createWidget(widget.TEXT, {
       x: 0,
-      y: 198,
+      y: 194,
       w: 480,
-      h: 24,
+      h: 22,
       color: 0x94a3b8,
-      text_size: 16,
+      text_size: 15,
       align_h: align.CENTER_H,
       align_v: align.CENTER_V,
-      text: 'TEMPO INTERVALLO'
+      text: 'FINE MINUTO: 60s'
     })
 
     // 5. Box Esercizio Corrente (Scheda visiva)
     createWidget(widget.FILL_RECT, {
       x: 45,
-      y: 228,
+      y: 224,
       w: 390,
-      h: 82,
+      h: 84,
       radius: 16,
       color: 0x1e293b // Slate scuro
     })
 
-    this.txtExercise = createWidget(widget.TEXT, {
+    txtExercise = createWidget(widget.TEXT, {
       x: 55,
-      y: 234,
+      y: 230,
       w: 370,
-      h: 70,
+      h: 72,
       color: 0xf8fafc,
       text_size: 22,
       align_h: align.CENTER_H,
       align_v: align.CENTER_V,
       text_style: text_style.WRAP,
-      text: this.getCurrentExerciseText()
+      text: getCurrentExerciseText()
     })
 
     // 6. Pulsante Principale: +1 ROUND (LAP)
-    this.btnRound = createWidget(widget.BUTTON, {
+    btnRound = createWidget(widget.BUTTON, {
       x: 80,
       y: 326,
       w: 320,
@@ -264,158 +423,49 @@ DataWidget({
       text_size: 24,
       color: 0x000000,
       click_func: () => {
-        this.handleNextRound()
+        handleNextRound()
       }
+    })
+    btnRound.addEventListener(event.CLICK_UP, () => {
+      handleNextRound()
     })
 
     // 7. Pulsante Secondario: Cambia Modalità (EMOM / AMRAP / FOR TIME)
-    this.btnMode = createWidget(widget.BUTTON, {
+    btnMode = createWidget(widget.BUTTON, {
       x: 120,
-      y: 402,
+      y: 404,
       w: 240,
-      h: 38,
-      radius: 19,
+      h: 40,
+      radius: 20,
       normal_color: 0x334155, // Grigio scuro
       press_color: 0x475569,
       text: 'MODALITÀ WOD ⟳',
       text_size: 16,
       color: 0xffffff,
       click_func: () => {
-        this.cycleMode()
+        cycleMode()
       }
     })
+    btnMode.addEventListener(event.CLICK_UP, () => {
+      cycleMode()
+    })
+
+    startTimerLoop()
   },
 
-  getRoundText() {
-    const cur = MODES[this.modeIndex]
-    if (cur.totalRounds) {
-      return `RND ${this.currentRound}/${cur.totalRounds}`
-    }
-    return `ROUND ${this.currentRound}`
+  onResume() {
+    startTimerLoop()
   },
 
-  getCurrentExerciseText() {
-    const cur = MODES[this.modeIndex]
-    if (cur.exercises && cur.exercises.length > 0) {
-      const idx = (this.currentRound - 1) % cur.exercises.length
-      return cur.exercises[idx]
-    }
-    return 'Lavoro continuo'
-  },
-
-  formatTime(totalSec) {
-    const m = Math.floor(totalSec / 60)
-    const s = totalSec % 60
-    const mm = m < 10 ? `0${m}` : `${m}`
-    const ss = s < 10 ? `0${s}` : `${s}`
-    return `${mm}:${ss}`
-  },
-
-  startTimer() {
-    if (this.timerInterval) clearInterval(this.timerInterval)
-
-    this.timerInterval = setInterval(() => {
-      this.elapsedSec++
-      const cur = MODES[this.modeIndex]
-
-      if (cur.id === 'EMOM') {
-        // EMOM: ogni 60 secondi
-        const secInMin = this.elapsedSec % 60
-        const secLeft = 60 - secInMin
-        this.txtTimer.setProperty(prop.TEXT, this.formatTime(secLeft))
-        this.txtTimerSub.setProperty(prop.TEXT, `FINE MINUTO: ${secLeft}s`)
-
-        // Avviso acustico/vibrazione 3-2-1
-        if (secLeft === 3 || secLeft === 2 || secLeft === 1) {
-          this.triggerVibration(VIBRATOR_SCENE_SHORT_STRONG)
-        } else if (secLeft === 60) {
-          // Cambio minuto effettivo
-          this.triggerVibration(VIBRATOR_SCENE_DURATION)
-          if (cur.totalRounds && this.currentRound < cur.totalRounds) {
-            this.currentRound++
-            this.updateRoundView()
-          }
-        }
-      } else if (cur.id === 'AMRAP') {
-        // AMRAP: conto alla rovescia dal totale
-        const remaining = Math.max(0, cur.totalDurationSec - this.elapsedSec)
-        this.txtTimer.setProperty(prop.TEXT, this.formatTime(remaining))
-        this.txtTimerSub.setProperty(prop.TEXT, 'TEMPO RESIDUO AMRAP')
-
-        if (remaining === 0) {
-          this.triggerVibration(VIBRATOR_SCENE_DURATION)
-        }
-      } else if (cur.id === 'TABATA') {
-        // TABATA: 20s lavoro, 10s rest (30s ciclo)
-        const cycleSec = this.elapsedSec % 30
-        if (cycleSec < 20) {
-          const workLeft = 20 - cycleSec
-          this.txtTimer.setProperty(prop.TEXT, this.formatTime(workLeft))
-          this.txtTimerSub.setProperty(prop.TEXT, '🔥 LAVORO MASSIMALE')
-          if (workLeft <= 3 && workLeft > 0) {
-            this.triggerVibration(VIBRATOR_SCENE_SHORT_STRONG)
-          }
-        } else {
-          const restLeft = 30 - cycleSec
-          this.txtTimer.setProperty(prop.TEXT, this.formatTime(restLeft))
-          this.txtTimerSub.setProperty(prop.TEXT, '💤 RECUPERO / REST')
-          if (restLeft === 1) {
-            this.triggerVibration(VIBRATOR_SCENE_DURATION)
-            if (cur.totalRounds && this.currentRound < cur.totalRounds) {
-              this.currentRound++
-              this.updateRoundView()
-            }
-          }
-        }
-      } else {
-        // FOR TIME: cronometro crescente
-        this.txtTimer.setProperty(prop.TEXT, this.formatTime(this.elapsedSec))
-        this.txtTimerSub.setProperty(prop.TEXT, 'TEMPO TRASCORSO')
-      }
-    }, 1000)
-  },
-
-  handleNextRound() {
-    this.triggerVibration(VIBRATOR_SCENE_SHORT_STRONG)
-    this.currentRound++
-    this.updateRoundView()
-  },
-
-  cycleMode() {
-    this.triggerVibration(VIBRATOR_SCENE_SHORT_STRONG)
-    this.modeIndex = (this.modeIndex + 1) % MODES.length
-    this.currentRound = 1
-    this.elapsedSec = 0
-
-    const cur = MODES[this.modeIndex]
-    this.txtModeBadge.setProperty(prop.TEXT, cur.title)
-    this.updateRoundView()
-  },
-
-  updateRoundView() {
-    this.txtRound.setProperty(prop.TEXT, this.getRoundText())
-    this.txtExercise.setProperty(prop.TEXT, this.getCurrentExerciseText())
-  },
-
-  triggerVibration(scene) {
-    if (!this.vibrator) return
-    try {
-      this.vibrator.stop()
-      this.vibrator.setMode(scene)
-      this.vibrator.start()
-    } catch (e) {}
-  },
+  onPause() {},
 
   onDestroy() {
-    if (this.timerInterval) {
-      clearInterval(this.timerInterval)
-      this.timerInterval = null
-    }
-    if (this.vibrator) {
+    stopTimerLoop()
+    if (vibrator) {
       try {
-        this.vibrator.stop()
+        vibrator.stop()
       } catch (e) {}
-      this.vibrator = null
+      vibrator = null
     }
   }
 })
