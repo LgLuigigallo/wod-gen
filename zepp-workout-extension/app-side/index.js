@@ -14,26 +14,51 @@ function getActiveWod() {
   }
 }
 
+async function sendWodToWatch(wod) {
+  try {
+    settings.settingsStorage.setItem('sync_status', 'IN_CORSO')
+
+    const res = await messageBuilder.request(
+      {
+        method: 'SYNC_WOD',
+        params: wod
+      },
+      { timeout: 8000 }
+    )
+
+    if (res && res.result === 'OK') {
+      settings.settingsStorage.setItem('sync_status', 'SUCCESS')
+    } else {
+      settings.settingsStorage.setItem('sync_status', 'FAILED: Risposta inattesa dall\'orologio')
+    }
+  } catch (err) {
+    settings.settingsStorage.setItem('sync_status', 'FAILED: Orologio non raggiungibile via Bluetooth')
+  }
+}
+
 AppSideService({
   onInit() {
-    messageBuilder.connect()
-    messageBuilder.listen(() => {})
+    try {
+      messageBuilder.connect()
+      messageBuilder.listen(() => {})
+    } catch (e) {}
 
-    // Notifica istantanea all'orologio quando l'utente imposta o incolla un nuovo WOD nella companion app
-    settings.settingsStorage.addListener('change', ({ key, newValue }) => {
+    // Ascolta quando le impostazioni cambiano o viene premuto Invia
+    settings.settingsStorage.addListener('change', async ({ key, newValue }) => {
       if (key === 'active_wod' && newValue) {
         try {
           const wod = typeof newValue === 'string' ? JSON.parse(newValue) : newValue
-          messageBuilder.call(wod)
-        } catch (e) {}
+          await sendWodToWatch(wod)
+        } catch (e) {
+          settings.settingsStorage.setItem('sync_status', 'FAILED: Formato WOD non valido')
+        }
       }
     })
 
-    // Risposta alle richieste provenienti dall'orologio
+    // Risposta alle richieste provenienti dall'orologio (es. all'avvio)
     messageBuilder.on('request', async (ctx) => {
       try {
         const payload = messageBuilder.buf2Json(ctx.request.payload)
-        
         if (payload.method === 'GET_WOD') {
           const wod = getActiveWod()
           ctx.response({

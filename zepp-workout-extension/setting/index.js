@@ -1,33 +1,33 @@
 AppSettingsPage({
   state: {
     activeWod: null,
+    syncStatus: null,
     pastedText: '',
     props: {}
   },
 
-  setState(props) {
+  getStorage(props) {
     this.state.props = props
     try {
       const raw = props.settingsStorage.getItem('active_wod')
       if (raw) {
         this.state.activeWod = typeof raw === 'string' ? JSON.parse(raw) : raw
+      } else {
+        this.state.activeWod = null
       }
     } catch (e) {
       this.state.activeWod = null
     }
-  },
 
-  saveWod(wod) {
     try {
-      this.state.activeWod = wod
-      this.state.props.settingsStorage.setItem('active_wod', JSON.stringify(wod))
+      this.state.syncStatus = props.settingsStorage.getItem('sync_status') || null
     } catch (e) {
-      console.log('Error saving WOD:', e)
+      this.state.syncStatus = null
     }
   },
 
   build(props) {
-    this.setState(props)
+    this.getStorage(props)
 
     const views = []
 
@@ -55,14 +55,129 @@ AppSettingsPage({
             marginBottom: '16px'
           }
         },
-        ['Copia il piano dalla Web App (WOD → Balance) e incollalo qui sotto per inviarlo via Bluetooth all\'orologio.']
+        ['Copia il piano dalla Web App (WOD → Balance) e incollalo qui sotto per inviarlo all\'Amazfit Balance.']
       )
     )
 
-    // 2. Stato WOD Corrente
+    // 2. Banner di Stato Invio (Conferma o Errore)
+    if (this.state.syncStatus) {
+      const status = this.state.syncStatus
+      if (status === 'SUCCESS') {
+        views.push(
+          View(
+            {
+              style: {
+                backgroundColor: '#ecfdf5',
+                border: '1px solid #10b981',
+                borderRadius: '10px',
+                padding: '12px',
+                marginBottom: '16px'
+              }
+            },
+            [
+              View(
+                {
+                  style: {
+                    fontSize: '16px',
+                    fontWeight: 'bold',
+                    color: '#047857',
+                    marginBottom: '4px'
+                  }
+                },
+                ['✓ WOD INVIATO CON SUCCESSO!']
+              ),
+              View(
+                {
+                  style: {
+                    fontSize: '13px',
+                    color: '#065f46'
+                  }
+                },
+                ['Il piano è arrivato al Balance. L\'orologio ha confermato con una vibrazione.']
+              )
+            ]
+          )
+        )
+      } else if (status.startsWith('FAILED')) {
+        const errorMsg = status.replace('FAILED:', '').trim()
+        views.push(
+          View(
+            {
+              style: {
+                backgroundColor: '#fef2f2',
+                border: '1px solid #ef4444',
+                borderRadius: '10px',
+                padding: '12px',
+                marginBottom: '16px'
+              }
+            },
+            [
+              View(
+                {
+                  style: {
+                    fontSize: '16px',
+                    fontWeight: 'bold',
+                    color: '#b91c1c',
+                    marginBottom: '4px'
+                  }
+                },
+                ['✕ INVIO FALLITO']
+              ),
+              View(
+                {
+                  style: {
+                    fontSize: '13px',
+                    color: '#991b1b',
+                    marginBottom: '4px'
+                  }
+                },
+                [errorMsg || 'Impossibile trasferire il WOD all\'orologio.']
+              ),
+              View(
+                {
+                  style: {
+                    fontSize: '12px',
+                    color: '#7f1d1d'
+                  }
+                },
+                ['Verifica che l\'Amazfit Balance sia acceso, nelle vicinanze e connesso via Bluetooth.']
+              )
+            ]
+          )
+        )
+      } else if (status === 'IN_CORSO') {
+        views.push(
+          View(
+            {
+              style: {
+                backgroundColor: '#fffbeb',
+                border: '1px solid #f59e0b',
+                borderRadius: '10px',
+                padding: '12px',
+                marginBottom: '16px'
+              }
+            },
+            [
+              View(
+                {
+                  style: {
+                    fontSize: '15px',
+                    fontWeight: 'bold',
+                    color: '#b45309'
+                  }
+                },
+                ['⏳ Invio al Balance via Bluetooth in corso...']
+              )
+            ]
+          )
+        )
+      }
+    }
+
+    // 3. Stato WOD Corrente
     if (this.state.activeWod) {
       const wod = this.state.activeWod
-      const exItems = (wod.exercises || []).map((ex) =>
+      const exItems = (wod.exercises || []).map((ex, idx) =>
         View(
           {
             style: {
@@ -71,7 +186,7 @@ AppSettingsPage({
               padding: '2px 0'
             }
           },
-          [`• ${ex}`]
+          [`${idx + 1}. ${ex}`]
         )
       )
 
@@ -106,7 +221,7 @@ AppSettingsPage({
                   marginBottom: '8px'
                 }
               },
-              [`Formato: ${wod.id} | Round: ${wod.totalRounds || 'Libero'}`]
+              [`Formato: ${wod.id} | Totale Esercizi: ${(wod.exercises || []).length}`]
             ),
             View(
               {
@@ -121,7 +236,7 @@ AppSettingsPage({
       )
     }
 
-    // 3. Casella di inserimento testo JSON
+    // 4. Casella di inserimento testo JSON
     views.push(
       View(
         {
@@ -137,7 +252,7 @@ AppSettingsPage({
               fontSize: '12px',
               color: '#334155'
             },
-            maxLength: 4000,
+            maxLength: 8000,
             onChange: (val) => {
               this.state.pastedText = val
             }
@@ -146,7 +261,7 @@ AppSettingsPage({
       )
     )
 
-    // 4. Pulsante Salva & Invia
+    // 5. Pulsante Salva & Invia con feedback
     views.push(
       Button({
         label: '🚀 INVIA AD AMAZFIT BALANCE',
@@ -161,18 +276,31 @@ AppSettingsPage({
           marginBottom: '10px'
         },
         onClick: () => {
-          if (!this.state.pastedText) return
+          const rawText = (this.state.pastedText || '').trim()
+          if (!rawText) {
+            props.settingsStorage.setItem('sync_status', 'FAILED: Incolla prima il JSON del WOD nella casella')
+            return
+          }
+
           try {
-            const parsed = JSON.parse(this.state.pastedText)
-            this.saveWod(parsed)
-          } catch (e) {
-            console.log('Invalid JSON', e)
+            const parsed = JSON.parse(rawText)
+            if (!parsed.exercises || !Array.isArray(parsed.exercises) || parsed.exercises.length === 0) {
+              props.settingsStorage.setItem('sync_status', 'FAILED: Il WOD deve contenere una lista "exercises" valida')
+              return
+            }
+
+            // Segna invio in corso e salva active_wod (triggerando app-side)
+            this.state.activeWod = parsed
+            props.settingsStorage.setItem('sync_status', 'IN_CORSO')
+            props.settingsStorage.setItem('active_wod', JSON.stringify(parsed))
+          } catch (err) {
+            props.settingsStorage.setItem('sync_status', 'FAILED: JSON non valido (' + (err.message || 'sintassi errata') + ')')
           }
         }
       })
     )
 
-    // 5. Pulsante Ripristina Default
+    // 6. Pulsante Ripristina Default
     views.push(
       Button({
         label: 'Ripristina WOD Predefiniti',
@@ -187,7 +315,8 @@ AppSettingsPage({
         onClick: () => {
           try {
             this.state.activeWod = null
-            this.state.props.settingsStorage.removeItem('active_wod')
+            props.settingsStorage.removeItem('active_wod')
+            props.settingsStorage.setItem('sync_status', 'RESET')
           } catch (e) {}
         }
       })

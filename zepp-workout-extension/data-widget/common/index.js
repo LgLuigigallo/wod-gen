@@ -480,6 +480,26 @@ DataWidget({
       messageBuilder.connect()
       messageBuilder.listen(() => {})
 
+      messageBuilder.on('request', (ctx) => {
+        try {
+          const data = messageBuilder.buf2Json(ctx.request.payload)
+          if (data && data.method === 'SYNC_WOD' && data.params) {
+            applyNewWod(data.params)
+            ctx.response({
+              data: { result: 'OK' }
+            })
+            return
+          }
+          ctx.response({
+            data: { result: 'OK' }
+          })
+        } catch (e) {
+          ctx.response({
+            data: { result: 'ERROR', error: e.message }
+          })
+        }
+      })
+
       messageBuilder.on('call', ({ payload: buf }) => {
         try {
           const data = messageBuilder.buf2Json(buf)
