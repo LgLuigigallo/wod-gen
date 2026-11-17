@@ -828,6 +828,7 @@ Allegati: ${shotsCount} screenshot. Produci il JSON richiesto.`;
       btnResetPrompt: document.getElementById('btn-reset-prompt'),
       btnTestConnection: document.getElementById('btn-test-connection'),
       boxTestStatus: document.getElementById('test-status-box'),
+      btnForceUpdate: document.getElementById('btn-force-update'),
 
       // Home Screen
       screenHome: document.getElementById('screen-home'),
@@ -2073,14 +2074,45 @@ Allegati: ${shotsCount} screenshot. Produci il JSON richiesto.`;
       }
     });
 
+    if (el.btnForceUpdate) {
+      el.btnForceUpdate.addEventListener('click', async () => {
+        el.btnForceUpdate.disabled = true;
+        el.btnForceUpdate.textContent = 'Aggiornamento…';
+        try {
+          if ('serviceWorker' in navigator) {
+            const registrations = await navigator.serviceWorker.getRegistrations();
+            for (const r of registrations) {
+              await r.unregister();
+            }
+          }
+          if ('caches' in window) {
+            const keys = await caches.keys();
+            for (const k of keys) {
+              await caches.delete(k);
+            }
+          }
+        } catch (e) {}
+        window.location.href = window.location.origin + window.location.pathname + '?nocache=' + Date.now();
+      });
+    }
+
     // --- SERVICE WORKER & WEB SHARE TARGET (Sezione 12) ---
     async function initPWA() {
       if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
         try {
-          await navigator.serviceWorker.register('sw.js');
+          const reg = await navigator.serviceWorker.register('sw.js?v=3.1');
+          await reg.update();
         } catch (e) {
           // Fallimento silenzioso
         }
+
+        let isRefreshing = false;
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+          if (!isRefreshing) {
+            isRefreshing = true;
+            window.location.reload();
+          }
+        });
       }
 
       // Verifica ricezione da Web Share Target

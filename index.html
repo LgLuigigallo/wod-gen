@@ -11,14 +11,14 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
   <link rel="apple-touch-icon" href="icon-192.png">
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=3.1">
 </head>
 <body>
 
   <main class="app-container">
     <!-- Intestazione Principale -->
     <header class="app-header">
-      <h1 class="brand-title">WOD <span class="accent-span">→</span> Balance</h1>
+      <h1 class="brand-title">WOD <span class="accent-span">→</span> Balance <span class="version-badge">v3.1</span></h1>
       <button type="button" id="btn-open-settings" class="btn btn-icon" aria-label="Apri impostazioni">
         ⚙️ Impostazioni
       </button>
@@ -251,6 +251,14 @@
         </button>
         <div id="test-status-box" class="status-box"></div>
       </div>
+
+      <!-- Aggiornamento app e cache -->
+      <div class="settings-group" style="padding-top: 12px; border-top: 1px solid var(--surface-border); display: flex; flex-direction: column; gap: 8px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span style="font-size: 13px; color: var(--text-muted);">Versione installata: <strong>v3.1</strong></span>
+          <button type="button" id="btn-force-update" class="btn btn-secondary btn-small">Ricarica & Aggiorna</button>
+        </div>
+      </div>
     </div>
   </dialog>
 
@@ -274,6 +282,6 @@
   <!-- Toast Notifiche -->
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-  <script src="app.js"></script>
+  <script src="app.js?v=3.1"></script>
 </body>
 </html>

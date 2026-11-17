@@ -1,5 +1,5 @@
 // WOD → Balance Service Worker
-const CACHE_NAME = 'wb-v3';
+const CACHE_NAME = 'wb-v3.1';
 const SHARED_CACHE_NAME = 'shared-shots';
 
 const APP_SHELL = [
@@ -84,15 +84,11 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Solo richieste GET per l'app shell stessa origine
+  // Strategia: Network-First con fallback su Cache per avere sempre gli ultimi aggiornamenti
   if (event.request.method === 'GET') {
     event.respondWith(
-      caches.match(event.request).then((cachedResponse) => {
-        if (cachedResponse) {
-          // Cache first, con aggiornamento in background opzionale
-          return cachedResponse;
-        }
-        return fetch(event.request).then((networkResponse) => {
+      fetch(event.request)
+        .then((networkResponse) => {
           if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
             const responseToCache = networkResponse.clone();
             caches.open(CACHE_NAME).then((cache) => {
@@ -100,8 +96,11 @@ self.addEventListener('fetch', (event) => {
             });
           }
           return networkResponse;
-        });
-      })
+        })
+        .catch(() => {
+          // Offline: fallback su cache
+          return caches.match(event.request);
+        })
     );
   }
 });
