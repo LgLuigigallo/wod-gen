@@ -1,0 +1,93 @@
+{
+  "titolo": "Functional Hero X",
+  "formato": "AMRAP",
+  "durata_totale_min": 20,
+  "riepilogo": "Riscaldamento, step up a carico crescente, poi 20 minuti AMRAP con corsa e stazioni di forza.",
+  "assunzioni": [
+    "Il titolo dice For Time ma il WOD descrive un 20 min AMRAP: seguo l'AMRAP.",
+    "Carichi 2x50/35 riportati come scritti: due manubri, valori maschile/femminile.",
+    "Nessun rest: recuperi mentre lavora il compagno."
+  ],
+  "attivita": [
+    {
+      "nome": "Riscaldamento: Barbell Prep",
+      "modalita_orologio": "Esercizi a corpo libero",
+      "tipo_modalita": "corpo_libero",
+      "obbligatoria": false,
+      "preparazione": [],
+      "esercizi": [
+        "3 giri:",
+        "5 Roll and Reach",
+        "10 Deadbug",
+        "10 Dynamic Squat Stretch",
+        "5 World's Greatest Stretch (L/R)",
+        "5 Back Squat a vuoto, tempo 3:1:2:1"
+      ],
+      "schema_lap": [],
+      "lap_per_giro": null,
+      "note": [
+        "Opzionale: puoi saltare la registrazione del riscaldamento."
+      ]
+    },
+    {
+      "nome": "Forza: Back Rack Box Step Up",
+      "modalita_orologio": "Forza",
+      "tipo_modalita": "forza",
+      "obbligatoria": true,
+      "preparazione": [],
+      "esercizi": [
+        "Ogni 3 minuti, 3 serie",
+        "Serie 1: 8 per gamba",
+        "Serie 2: 6 per gamba",
+        "Serie 3: 4 per gamba",
+        "Carico libero, crescente"
+      ],
+      "schema_lap": [],
+      "lap_per_giro": null,
+      "note": [
+        "Se lo step up non è riconosciuto dall'orologio, conta le serie a mano.",
+        "Il timer da 3 minuti segui quello della palestra."
+      ]
+    },
+    {
+      "nome": "WOD: 20 min AMRAP",
+      "modalita_orologio": "Corsa all'aperto",
+      "tipo_modalita": "corsa",
+      "obbligatoria": true,
+      "preparazione": [
+        "Auto-lap: spento.",
+        "Auto-pausa: spenta.",
+        "Avvia al via del coach.",
+        "Lap manuale col tasto basso."
+      ],
+      "esercizi": [
+        "500 m corsa",
+        "15 DB Front Squat (2x50/35)",
+        "50 m Farmers Carry (2x50/35)",
+        "500 m corsa",
+        "15 DB Deadlift (2x50/35)",
+        "20 m Sled Push con box"
+      ],
+      "schema_lap": [
+        "Corsa 500 m: premi lap a fine corsa.",
+        "15 Front Squat + 50 m Farmers Carry: premi lap a fine Farmers.",
+        "Corsa 500 m: premi lap a fine corsa.",
+        "15 Deadlift + 20 m Sled Push: premi lap a fine Sled, poi ricomincia."
+      ],
+      "lap_per_giro": 4,
+      "note": [
+        "Conta i giri a mano.",
+        "Nessun lap di riposo: recuperi mentre lavora il compagno."
+      ]
+    }
+  ],
+  "lettura_dati": [
+    "Lap di corsa: passo e frequenza cardiaca.",
+    "Lap di forza: tempo e frequenza cardiaca. Ignora la distanza GPS.",
+    "Totale attività: calorie e frequenza cardiaca dei 20 minuti."
+  ],
+  "limiti": [
+    "Calorie per singolo esercizio non disponibili.",
+    "Calorie per lap non garantite: da verificare in Zepp."
+  ]
+}

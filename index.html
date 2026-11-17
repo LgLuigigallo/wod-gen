@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>WOD → Balance</title>
+  <meta name="description" content="Traduttore da screenshot del WOD a istruzioni per Amazfit Balance ed app Zepp">
+  <meta name="theme-color" content="#12161A">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' blob: data:; connect-src 'self' https://generativelanguage.googleapis.com https://api.openai.com https:; style-src 'self' 'unsafe-inline'; script-src 'self';">
+
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <main class="app-container">
+    <!-- Intestazione Principale -->
+    <header class="app-header">
+      <h1 class="brand-title">WOD <span class="accent-span">→</span> Balance</h1>
+      <button type="button" id="btn-open-settings" class="btn btn-icon" aria-label="Apri impostazioni">
+        ⚙️ Impostazioni
+      </button>
+    </header>
+
+    <!-- Box Errori Azionabili (Sezione 13) -->
+    <aside id="error-box" class="error-box" role="alert" aria-live="assertive">
+      <div class="error-header">
+        <span class="error-title">Attenzione</span>
+        <button type="button" id="btn-error-close" class="btn-icon btn-small" aria-label="Chiudi errore">✕</button>
+      </div>
+      <p id="error-message" class="error-message"></p>
+      <details id="error-detail-toggle" class="error-detail-toggle" style="display: none;">
+        <summary>Dettagli tecnici</summary>
+        <pre id="error-detail-text" class="error-detail-text"></pre>
+      </details>
+    </aside>
+
+    <!-- 1. SCHERMATA HOME (Sezione 5.1) -->
+    <section id="screen-home" class="screen-view">
+      <div class="options-section">
+        <!-- Area Caricamento Screenshot -->
+        <div id="drop-zone" class="upload-card">
+          <input type="file" id="file-input" accept="image/*" multiple style="display: none;">
+          <button type="button" id="btn-select-files" class="btn btn-primary">
+            Scegli screenshot
+          </button>
+          <p class="upload-help-text">
+            Carica lo screenshot del WOD del giorno. Ti dico quali attività avviare sull'orologio e quando premere lap.
+          </p>
+          <div id="thumbs-list" class="thumbs-container" aria-live="polite"></div>
+        </div>
+
+        <!-- Opzioni Utente (Segmented Controls) -->
+        <fieldset class="option-group">
+          <legend class="option-label">Corsa</legend>
+          <div class="segmented-control">
+            <input type="radio" name="opt-corsa" id="opt-corsa-aperto" value="aperto" checked>
+            <label for="opt-corsa-aperto">All'aperto</label>
+            <input type="radio" name="opt-corsa" id="opt-corsa-tapis" value="tapis">
+            <label for="opt-corsa-tapis">Su tapis</label>
+          </div>
+        </fieldset>
+
+        <fieldset class="option-group">
+          <legend class="option-label">Recupero (Rest)</legend>
+          <div class="segmented-control">
+            <input type="radio" name="opt-rest" id="opt-rest-screenshot" value="screenshot" checked>
+            <label for="opt-rest-screenshot">Come da screenshot</label>
+            <input type="radio" name="opt-rest" id="opt-rest-sincro" value="sincro">
+            <label for="opt-rest-sincro">Nessuno (sincro compagno)</label>
+          </div>
+        </fieldset>
+
+        <fieldset class="option-group">
+          <legend class="option-label">Carichi</legend>
+          <div class="segmented-control">
+            <input type="radio" name="opt-carichi" id="opt-carichi-scritti" value="scritti" checked>
+            <label for="opt-carichi-scritti">Come scritti</label>
+            <input type="radio" name="opt-carichi" id="opt-carichi-converti" value="converti">
+            <label for="opt-carichi-converti">lb → kg</label>
+          </div>
+        </fieldset>
+
+        <div class="option-group">
+          <label for="input-notes" class="option-label">Note per l'AI (opzionale)</label>
+          <textarea id="input-notes" class="notes-input" rows="2" placeholder="Es. salta il riscaldamento, ho poco tempo..."></textarea>
+        </div>
+
+        <!-- Cronologia Ultime Schede (Sezione 4) -->
+        <section id="history-section" class="history-section" style="display: none;">
+          <div class="history-header">
+            <h2 class="history-title-main">Schede recenti</h2>
+            <div style="display: flex; gap: 8px;">
+              <button type="button" id="btn-export-history" class="btn btn-secondary btn-small">Esporta</button>
+              <button type="button" id="btn-clear-history" class="btn btn-danger btn-small">Svuota</button>
+            </div>
+          </div>
+          <div id="history-list" class="history-list"></div>
+        </section>
+      </div>
+
+      <!-- Barra Primaria Fissa in Basso -->
+      <footer class="sticky-bottom-bar">
+        <div class="sticky-bottom-inner">
+          <button type="button" id="btn-generate" class="btn btn-primary" disabled>
+            Genera scheda
+          </button>
+          <span id="btn-generate-help" class="btn-generate-help">Carica almeno uno screenshot</span>
+        </div>
+      </footer>
+    </section>
+
+    <!-- 2. SCHERMATA IN ATTESA (Sezione 5.2) -->
+    <section id="screen-loading" class="screen-view loading-box" style="display: none;">
+      <div class="loading-spinner" aria-hidden="true"></div>
+      <h2 id="loading-status-text" class="loading-title">Lettura dello screenshot…</h2>
+      <button type="button" id="btn-cancel-generation" class="btn btn-secondary">
+        Annulla
+      </button>
+    </section>
+
+    <!-- 3. SCHERMATA RISULTATO (Sezione 5.3 & 11) -->
+    <section id="screen-result" class="screen-view" style="display: none;">
+      <div id="result-plan-container" class="options-section">
+        <!-- Generato dinamicamente con DOM sicuro e textContent -->
+      </div>
+
+      <div class="result-actions-bar">
+        <button type="button" id="btn-toggle-gym-mode" class="btn btn-primary">
+          Vista Palestra (schermo sempre attivo)
+        </button>
+        <div class="result-actions-row">
+          <button type="button" id="btn-copy-plan" class="btn btn-secondary">
+            Copia scheda
+          </button>
+          <button type="button" id="btn-share-plan" class="btn btn-secondary">
+            Condividi
+          </button>
+        </div>
+        <div class="result-actions-row">
+          <button type="button" id="btn-regenerate-note" class="btn btn-secondary">
+            Rigenera con una nota
+          </button>
+          <button type="button" id="btn-new-wod" class="btn btn-secondary">
+            Nuovo WOD
+          </button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- PANNELLO IMPOSTAZIONI A SCHERMO INTERO (Sezione 5.4 & 7) -->
+  <dialog id="settings-modal" class="modal-overlay" aria-labelledby="settings-heading" aria-modal="true">
+    <div class="modal-content">
+      <header class="modal-header">
+        <h2 id="settings-heading" class="modal-title">Impostazioni</h2>
+        <button type="button" id="btn-close-settings" class="btn btn-secondary btn-small">
+          Chiudi
+        </button>
+      </header>
+
+      <!-- Provider AI -->
+      <div class="settings-group">
+        <label for="set-provider" class="settings-label">Provider AI</label>
+        <select id="set-provider" class="select-input">
+          <option value="gemini">Google Gemini</option>
+          <option value="openai-responses">OpenAI — Responses (consigliata per Codex)</option>
+          <option value="openai-chat">OpenAI — Chat Completions</option>
+          <option value="compat-chat">Compatibile OpenAI (Base URL personalizzato)</option>
+        </select>
+        <p class="settings-help">
+          Per modelli Codex usa il provider "OpenAI — Responses" con una chiave API OpenAI. Un login ChatGPT/Codex CLI non può essere usato direttamente da una web-app.
+        </p>
+      </div>
+
+      <!-- Chiave API -->
+      <div class="settings-group">
+        <label for="set-api-key" class="settings-label">Chiave API</label>
+        <div class="input-with-button">
+          <input type="password" id="set-api-key" class="input-text" placeholder="Incolla qui la tua chiave API" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+          <button type="button" id="btn-toggle-api-key" class="btn btn-secondary btn-small">Mostra</button>
+        </div>
+        <p class="settings-help">
+          La chiave è salvata su questo telefono. Usa una chiave con limite di spesa e non condividere il telefono sbloccato.
+        </p>
+      </div>
+
+      <!-- Modello -->
+      <div class="settings-group">
+        <label for="set-model" class="settings-label">Modello</label>
+        <div class="input-with-button">
+          <input type="text" id="set-model" class="input-text" list="dl-models" placeholder="Es. gemini-flash-latest o gpt-5-mini">
+          <datalist id="dl-models"></datalist>
+          <button type="button" id="btn-fetch-models" class="btn btn-secondary btn-small">Carica modelli</button>
+        </div>
+        <p class="settings-help">
+          I nomi dei modelli cambiano spesso. Premi "Carica modelli" per scaricare la lista ufficiale dal provider.
+        </p>
+      </div>
+
+      <!-- Base URL -->
+      <div id="group-base-url" class="settings-group" style="display: none;">
+        <label for="set-base-url" class="settings-label">Base URL</label>
+        <input type="url" id="set-base-url" class="input-text" placeholder="https://api.openai.com/v1">
+        <p class="settings-help">
+          URL di base dell'endpoint compatibile OpenAI o di un proxy CORS.
+        </p>
+      </div>
+
+      <!-- Ricorda Chiave -->
+      <div class="settings-group">
+        <label class="checkbox-row">
+          <input type="checkbox" id="set-remember-key" checked>
+          <span>Ricorda la chiave su questo dispositivo</span>
+        </label>
+        <p class="settings-help">
+          Se disattivato, la chiave rimarrà valida solo per la sessione corrente del browser.
+        </p>
+      </div>
+
+      <!-- Nomi Modalità Orologio -->
+      <div class="settings-group">
+        <label class="settings-label">Nomi modalità dell'orologio (menu italiano Amazfit)</label>
+        <p class="settings-help">Puoi correggere i nomi esatti se differiscono sul tuo orologio:</p>
+        <input type="text" id="set-mode-0" class="input-text" value="Esercizi a corpo libero" style="margin-bottom: 6px;">
+        <input type="text" id="set-mode-1" class="input-text" value="Forza" style="margin-bottom: 6px;">
+        <input type="text" id="set-mode-2" class="input-text" value="Corsa all'aperto" style="margin-bottom: 6px;">
+        <input type="text" id="set-mode-3" class="input-text" value="Corsa su tapis">
+      </div>
+
+      <!-- Prompt di Sistema -->
+      <div class="settings-group">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <label for="set-system-prompt" class="settings-label">Prompt di sistema (personalizzabile)</label>
+          <button type="button" id="btn-reset-prompt" class="btn btn-secondary btn-small">Ripristina prompt</button>
+        </div>
+        <textarea id="set-system-prompt" class="notes-input" rows="6" placeholder="Lascia vuoto per usare il prompt di sistema predefinito..."></textarea>
+      </div>
+
+      <!-- Test Connessione -->
+      <div class="settings-group">
+        <button type="button" id="btn-test-connection" class="btn btn-secondary">
+          Test connessione
+        </button>
+        <div id="test-status-box" class="status-box"></div>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- VISTA PALESTRA A SCHERMO INTERO (COULD FEATURE) -->
+  <div id="gym-overlay" class="gym-overlay" role="dialog" aria-modal="true" aria-label="Vista Palestra">
+    <header class="gym-top-bar">
+      <span id="gym-total-header" class="gym-total-header">Attività 1 di 3</span>
+      <button type="button" id="btn-gym-close" class="btn btn-secondary btn-small">Esci</button>
+    </header>
+
+    <div id="gym-activity-container" class="gym-activity-container">
+      <!-- Dettaglio attività renderizzato a schermo intero -->
+    </div>
+
+    <nav class="gym-nav-bar">
+      <button type="button" id="btn-gym-prev" class="btn btn-secondary">◀ Precedente</button>
+      <button type="button" id="btn-gym-next" class="btn btn-primary">Successiva ▶</button>
+    </nav>
+  </div>
+
+  <!-- Toast Notifiche -->
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
