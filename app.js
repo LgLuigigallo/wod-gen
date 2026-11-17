@@ -60,7 +60,7 @@ FORMATO DI USCITA
   ];
 
   const DEFAULT_MODELS = {
-    'gemini': 'gemini-3.8-flash',
+    'gemini': 'gemini-3.5-flash-lite',
     'openai-responses': 'gpt-4o-mini',
     'openai-chat': 'gpt-4o-mini',
     'compat-chat': ''
@@ -68,10 +68,10 @@ FORMATO DI USCITA
 
   const DEFAULT_SUGGESTIONS = {
     'gemini': [
-      'gemini-3.8-flash',
-      'gemini-3.5-flash',
-      'gemini-3-flash',
       'gemini-3.5-flash-lite',
+      'gemini-3.5-flash',
+      'gemini-3.8-flash',
+      'gemini-3-flash',
       'gemini-3.8-flash-lite',
       'gemini-2.0-flash'
     ],
@@ -159,6 +159,16 @@ Allegati: ${shotsCount} screenshot. Produci il JSON richiesto.`;
         });
       }
 
+      const genConfig = {
+        responseMimeType: 'application/json',
+        temperature: 0.2
+      };
+      if (cleanModel.startsWith('gemini-3')) {
+        genConfig.thinkingConfig = {
+          thinkingLevel: 'low'
+        };
+      }
+
       const bodyObj = {
         systemInstruction: {
           parts: [{ text: sysPrompt }]
@@ -167,10 +177,7 @@ Allegati: ${shotsCount} screenshot. Produci il JSON richiesto.`;
           role: 'user',
           parts: parts
         }],
-        generationConfig: {
-          responseMimeType: 'application/json',
-          temperature: 0.2
-        }
+        generationConfig: genConfig
       };
 
       return {
@@ -597,7 +604,7 @@ Allegati: ${shotsCount} screenshot. Produci il JSON richiesto.`;
     }
 
     let storedGemini = STORAGE.get('wb.model.gemini');
-    if (!storedGemini || storedGemini === 'gemini-flash-latest' || storedGemini.includes('2.5') || storedGemini.includes('1.5')) {
+    if (!storedGemini || storedGemini === 'gemini-flash-latest' || storedGemini === 'gemini-3.8-flash' || storedGemini.includes('2.5') || storedGemini.includes('1.5')) {
       storedGemini = DEFAULT_MODELS.gemini;
       STORAGE.set('wb.model.gemini', DEFAULT_MODELS.gemini);
       STORAGE.set('wb.model.gemini', DEFAULT_MODELS.gemini, true);
@@ -763,12 +770,12 @@ Allegati: ${shotsCount} screenshot. Produci il JSON richiesto.`;
             const ctx = canvas.getContext('2d');
             ctx.drawImage(img, 0, 0, width, height);
 
-            // Esporta JPEG qualità 0.9
-            let blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.9));
+            // Esporta JPEG qualità 0.85 per massima leggibilità del testo e upload rapido
+            let blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.85));
 
-            // Se supera 4 MB, riprova con qualità 0.8
-            if (blob && blob.size > 4 * 1024 * 1024) {
-              blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.8));
+            // Se supera 3 MB, riprova con qualità 0.75
+            if (blob && blob.size > 3 * 1024 * 1024) {
+              blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.75));
             }
 
             if (!blob) {
@@ -992,11 +999,12 @@ Allegati: ${shotsCount} screenshot. Produci il JSON richiesto.`;
         const opt = document.createElement('option');
         opt.value = m;
         let label = m;
-        if (m === 'gemini-3.8-flash') label = 'Gemini 3.8 Flash (Consigliato, rapido)';
-        else if (m === 'gemini-3.5-flash') label = 'Gemini 3.5 Flash';
+        if (m === 'gemini-3.5-flash-lite') label = 'Gemini 3.5 Flash Lite (Ultra-veloce, consigliato)';
+        else if (m === 'gemini-3.5-flash') label = 'Gemini 3.5 Flash (Rapido)';
+        else if (m === 'gemini-3.8-flash') label = 'Gemini 3.8 Flash (Ragionamento)';
         else if (m === 'gemini-3-flash') label = 'Gemini 3 Flash';
-        else if (m === 'gemini-3.5-flash-lite') label = 'Gemini 3.5 Flash Lite';
         else if (m === 'gemini-3.8-flash-lite') label = 'Gemini 3.8 Flash Lite';
+        else if (m === 'gemini-2.0-flash') label = 'Gemini 2.0 Flash';
         else if (m === 'gpt-4o-mini') label = 'OpenAI GPT-4o Mini (Consigliato)';
         opt.textContent = label;
         if (m === curModel) {
@@ -1546,7 +1554,7 @@ Allegati: ${shotsCount} screenshot. Produci il JSON richiesto.`;
         if (abortController) {
           abortController.abort('timeout');
         }
-      }, 90000); // Timeout 90s (Sezione 8)
+      }, 120000); // Timeout 120s
 
       try {
         const userMsg = buildUserMessage({
@@ -1590,7 +1598,7 @@ Allegati: ${shotsCount} screenshot. Produci il JSON richiesto.`;
 
         if (isTimedOut || err.name === 'AbortError' || err === 'timeout') {
           showError(
-            'Il modello non ha risposto in 90 secondi. Riprova o scegli un altro modello (es. gemini-3.8-flash o gemini-3.5-flash) in Impostazioni.',
+            'Il modello non ha risposto entro il tempo limite (120s). Seleziona "Gemini 3.5 Flash Lite" dalla tendina in Home per una risposta rapida.',
             techInfo
           );
           return;
@@ -1627,11 +1635,11 @@ Allegati: ${shotsCount} screenshot. Produci il JSON richiesto.`;
       let model = overrideModel || settings.models[prov] || DEFAULT_MODELS[prov];
 
       // Auto-migrazione attiva se il modello salvato è deprecato o non responsive
-      if (prov === 'gemini' && (!model || model === 'gemini-flash-latest' || model.includes('2.5') || model.includes('1.5'))) {
-        model = 'gemini-3.8-flash';
-        settings.models['gemini'] = 'gemini-3.8-flash';
-        STORAGE.set('wb.model.gemini', 'gemini-3.8-flash');
-        if (el.inputModel) el.inputModel.value = 'gemini-3.8-flash';
+      if (prov === 'gemini' && (!model || model === 'gemini-flash-latest' || model === 'gemini-3.8-flash' || model.includes('2.5') || model.includes('1.5'))) {
+        model = 'gemini-3.5-flash-lite';
+        settings.models['gemini'] = 'gemini-3.5-flash-lite';
+        STORAGE.set('wb.model.gemini', 'gemini-3.5-flash-lite');
+        if (el.inputModel) el.inputModel.value = 'gemini-3.5-flash-lite';
         syncHomeModelSelect();
       }
 
@@ -1689,7 +1697,7 @@ Allegati: ${shotsCount} screenshot. Produci il JSON richiesto.`;
 
         // Fallback automatico se 503 (sovraccarico temporaneo) su Gemini
         if (res.status === 503 && prov === 'gemini' && !isRetry) {
-          const fallbackModel = (model === 'gemini-3.8-flash') ? 'gemini-3.5-flash' : 'gemini-3.8-flash';
+          const fallbackModel = (model === 'gemini-3.5-flash-lite') ? 'gemini-3.5-flash' : 'gemini-3.5-flash-lite';
           console.warn(`Modello ${model} ha restituito 503 (sovraccarico). Tentativo automatico con ${fallbackModel}...`);
           if (el.loadingStatusText) {
             el.loadingStatusText.textContent = `Modello sovraccarico, provo ${fallbackModel}…`;
@@ -2177,7 +2185,7 @@ Allegati: ${shotsCount} screenshot. Produci il JSON richiesto.`;
     async function initPWA() {
       if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
         try {
-          const reg = await navigator.serviceWorker.register('sw.js?v=3.2');
+          const reg = await navigator.serviceWorker.register('sw.js?v=3.3');
           await reg.update();
         } catch (e) {
           // Fallimento silenzioso
