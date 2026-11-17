@@ -559,6 +559,74 @@ Allegati: ${shotsCount} screenshot. Produci il JSON richiesto.`;
     return lines.join('\n');
   }
 
+  /**
+   * Converte il piano del WOD nel formato JSON standard per
+   * l'estensione Zepp OS di Amazfit Balance.
+   */
+  function convertPlanToZeppWod(plan) {
+    if (!plan) return null;
+
+    const rawFormat = (plan.formato || '').toUpperCase();
+    let id = 'FORTIME';
+    let type = 'countup';
+    let intervalSec = null;
+    let totalDurationSec = null;
+    let totalRounds = null;
+
+    if (rawFormat.includes('EMOM')) {
+      id = 'EMOM';
+      type = 'countdown_interval';
+      intervalSec = 60;
+      totalRounds = plan.durata_totale_min || 12;
+      totalDurationSec = totalRounds * 60;
+    } else if (rawFormat.includes('AMRAP')) {
+      id = 'AMRAP';
+      type = 'countdown_total';
+      totalDurationSec = (plan.durata_totale_min || 20) * 60;
+    } else if (rawFormat.includes('TABATA')) {
+      id = 'TABATA';
+      type = 'tabata';
+      intervalSec = 30;
+      totalRounds = 8;
+      totalDurationSec = 240;
+    } else {
+      id = 'FORTIME';
+      type = 'countup';
+      if (plan.durata_totale_min) {
+        totalDurationSec = plan.durata_totale_min * 60;
+      }
+    }
+
+    const exercises = [];
+    if (plan.attivita && Array.isArray(plan.attivita)) {
+      for (const act of plan.attivita) {
+        if (act.esercizi && Array.isArray(act.esercizi)) {
+          for (const ex of act.esercizi) {
+            exercises.push(ex);
+          }
+        } else if (act.schema_lap && Array.isArray(act.schema_lap)) {
+          for (const lap of act.schema_lap) {
+            exercises.push(lap);
+          }
+        }
+      }
+    }
+
+    if (exercises.length === 0) {
+      exercises.push(plan.titolo || 'WOD personalizzato');
+    }
+
+    return {
+      id,
+      title: (plan.titolo || id).slice(0, 32),
+      type,
+      intervalSec,
+      totalRounds,
+      totalDurationSec,
+      exercises
+    };
+  }
+
   // --- STORAGE E GESTIONE PREFERENZE (Sezione 7) ---
 
   const STORAGE = {
@@ -877,6 +945,11 @@ Allegati: ${shotsCount} screenshot. Produci il JSON richiesto.`;
       btnNewWod: document.getElementById('btn-new-wod'),
       btnRegenerateWithNote: document.getElementById('btn-regenerate-note'),
       btnToggleGymMode: document.getElementById('btn-toggle-gym-mode'),
+      btnSyncZepp: document.getElementById('btn-sync-zepp'),
+      syncModal: document.getElementById('sync-modal'),
+      btnCloseSync: document.getElementById('btn-close-sync'),
+      syncWodPreview: document.getElementById('sync-wod-preview'),
+      btnCopyZeppPayload: document.getElementById('btn-copy-zepp-payload'),
 
       // Gym View Overlay
       gymOverlay: document.getElementById('gym-overlay'),
@@ -2043,6 +2116,97 @@ Allegati: ${shotsCount} screenshot. Produci il JSON richiesto.`;
       el.inputNotes.scrollIntoView({ behavior: 'smooth' });
     });
 
+    // --- SINCRONIZZAZIONE CON AMAZFIT BALANCE ---
+    function openSyncModal() {
+      if (!currentPlan || !el.syncModal) return;
+      const zeppWod = convertPlanToZeppWod(currentPlan);
+      if (!zeppWod) return;
+
+      // Render preview in modo sicuro senza innerHTML
+      if (el.syncWodPreview) {
+        el.syncWodPreview.replaceChildren();
+
+        const titleBox = document.createElement('div');
+        titleBox.style.display = 'flex';
+        titleBox.style.justifyContent = 'space-between';
+        titleBox.style.alignItems = 'center';
+        titleBox.style.marginBottom = '8px';
+
+        const titleText = document.createElement('strong');
+        titleText.style.fontSize = '16px';
+        titleText.style.color = '#f59e0b';
+        titleText.textContent = zeppWod.title;
+        titleBox.appendChild(titleText);
+
+        const formatBadge = document.createElement('span');
+        formatBadge.style.fontSize = '12px';
+        formatBadge.style.padding = '2px 8px';
+        formatBadge.style.borderRadius = '12px';
+        formatBadge.style.background = '#38bdf8';
+        formatBadge.style.color = '#000';
+        formatBadge.style.fontWeight = 'bold';
+        formatBadge.textContent = zeppWod.id;
+        titleBox.appendChild(formatBadge);
+        el.syncWodPreview.appendChild(titleBox);
+
+        const subInfo = document.createElement('div');
+        subInfo.style.fontSize = '12px';
+        subInfo.style.color = '#94a3b8';
+        subInfo.style.marginBottom = '8px';
+        const mins = Math.round((zeppWod.totalDurationSec || 0) / 60);
+        subInfo.textContent = `Round totali: ${zeppWod.totalRounds || 'Liberi'} | Durata: ${mins > 0 ? mins + ' min' : 'Libera'}`;
+        el.syncWodPreview.appendChild(subInfo);
+
+        const list = document.createElement('ul');
+        list.style.margin = '4px 0 0 16px';
+        list.style.padding = '0';
+        list.style.fontSize = '13px';
+        list.style.color = '#cbd5e1';
+
+        for (const ex of zeppWod.exercises) {
+          const li = document.createElement('li');
+          li.style.marginBottom = '4px';
+          li.textContent = ex;
+          list.appendChild(li);
+        }
+        el.syncWodPreview.appendChild(list);
+      }
+
+      el.syncModal.classList.add('open');
+      el.syncModal.setAttribute('aria-hidden', 'false');
+      el.syncModal.style.display = 'block';
+      document.body.style.overflow = 'hidden';
+      el.syncModal.scrollTop = 0;
+    }
+
+    function closeSyncModal() {
+      if (!el.syncModal) return;
+      el.syncModal.classList.remove('open');
+      el.syncModal.setAttribute('aria-hidden', 'true');
+      el.syncModal.style.display = 'none';
+      document.body.style.overflow = '';
+    }
+
+    if (el.btnSyncZepp) {
+      el.btnSyncZepp.addEventListener('click', openSyncModal);
+    }
+    if (el.btnCloseSync) {
+      el.btnCloseSync.addEventListener('click', closeSyncModal);
+    }
+    if (el.btnCopyZeppPayload) {
+      el.btnCopyZeppPayload.addEventListener('click', async () => {
+        if (!currentPlan) return;
+        const zeppWod = convertPlanToZeppWod(currentPlan);
+        const payloadStr = JSON.stringify(zeppWod, null, 2);
+        try {
+          await navigator.clipboard.writeText(payloadStr);
+          showToast('WOD copiato! Incollalo in Zepp App > WOD Balance');
+        } catch (err) {
+          showError('Impossibile copiare negli appunti.', err.message);
+        }
+      });
+    }
+
     // --- VISTA PALESTRA (COULD FEATURE) ---
     async function activateGymMode() {
       if (!currentPlan || !currentPlan.attivita || currentPlan.attivita.length === 0) return;
@@ -2266,7 +2430,8 @@ Allegati: ${shotsCount} screenshot. Produci il JSON richiesto.`;
     extractText,
     parseModelJson,
     validatePlan,
-    planToText
+    planToText,
+    convertPlanToZeppWod
   };
 
   if (typeof module !== 'undefined' && module.exports) {

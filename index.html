@@ -139,6 +139,11 @@
       </div>
 
       <div class="result-actions-bar">
+        <div class="result-actions-row">
+          <button type="button" id="btn-sync-zepp" class="btn btn-primary" style="flex: 1; background: linear-gradient(135deg, #f59e0b, #d97706); color: #000; font-weight: bold; font-size: 16px; padding: 12px 16px;">
+            ⌚ Invia ad Amazfit Balance
+          </button>
+        </div>
         <button type="button" id="btn-toggle-gym-mode" class="btn btn-primary">
           Vista Palestra (schermo sempre attivo)
         </button>
@@ -280,6 +285,48 @@
     </div>
   </div>
 
+  <!-- MODAL SINCRONIZZAZIONE AMAZFIT BALANCE -->
+  <div id="sync-modal" class="modal-overlay" role="dialog" aria-labelledby="sync-heading" aria-modal="true" aria-hidden="true" style="display: none;">
+    <div class="modal-content" style="max-width: 480px;">
+      <header class="modal-header">
+        <h2 id="sync-heading" class="modal-title">⌚ Invia ad Amazfit Balance</h2>
+        <button type="button" id="btn-close-sync" class="btn btn-secondary btn-small">
+          Chiudi
+        </button>
+      </header>
+
+      <div class="settings-group">
+        <p style="font-size: 14px; color: var(--text-muted); margin-bottom: 12px;">
+          Questo pacchetto contiene il tuo WOD formattato per l'estensione Zepp OS al polso (titolo, intervalli, sequenza esercizi).
+        </p>
+
+        <!-- Preview Card del WOD -->
+        <div id="sync-wod-preview" style="background: #1e293b; color: #f8fafc; border-radius: 12px; padding: 14px; margin-bottom: 14px;">
+          <!-- Riempito dinamicamente -->
+        </div>
+
+        <!-- Azione: Copia rapida per App Zepp -->
+        <button type="button" id="btn-copy-zepp-payload" class="btn btn-primary" style="width: 100%; margin-bottom: 12px; font-weight: bold; background: linear-gradient(135deg, #f59e0b, #d97706); color: #000; font-size: 15px; padding: 12px 0;">
+          📋 1. Copia WOD negli Appunti
+        </button>
+
+        <!-- Istruzioni guidate -->
+        <div style="background: rgba(255,255,255,0.05); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; font-size: 13px; line-height: 1.5;">
+          <strong style="color: #f59e0b;">Come caricarlo sull'orologio (10 secondi):</strong>
+          <ol style="margin: 8px 0 0 18px; padding: 0;">
+            <li>Tocca <strong>Copia WOD negli Appunti</strong> qui sopra.</li>
+            <li>Apri l'app <strong>Zepp</strong> sullo smartphone.</li>
+            <li>Vai in <strong>Profilo ➔ Amazfit Balance ➔ WOD Balance</strong> (Impostazioni).</li>
+            <li>Incolla e tocca <strong>🚀 INVIA AD AMAZFIT BALANCE</strong>.</li>
+          </ol>
+          <p style="margin-top: 8px; font-size: 12px; color: var(--text-muted);">
+            L'orologio vibrerà confermando la ricezione e mostrerà gli esercizi della lavagna al posto dei preset standard!
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- VISTA PALESTRA A SCHERMO INTERO (COULD FEATURE) -->
   <div id="gym-overlay" class="gym-overlay" role="dialog" aria-modal="true" aria-label="Vista Palestra">
     <header class="gym-top-bar">
@@ -300,6 +347,6 @@
   <!-- Toast Notifiche -->
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-  <script src="app.js?v=3.3"></script>
+  <script src="app.js?v=3.4"></script>
 </body>
 </html>

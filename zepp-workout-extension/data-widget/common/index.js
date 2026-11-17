@@ -9,8 +9,12 @@ import {
   event
 } from '@zos/ui'
 import { Vibrator, VIBRATOR_SCENE_SHORT_STRONG, VIBRATOR_SCENE_DURATION } from '@zos/sensor'
+import { localStorage } from '@zos/storage'
+import { MessageBuilder } from '../../shared/message'
 
-// Preset WOD
+let messageBuilder = null
+
+// Preset di allenamento WOD
 const MODES = [
   {
     id: 'EMOM',
@@ -23,11 +27,11 @@ const MODES = [
       'Min 1: 15 Burpees',
       'Min 2: 20 KB Swings',
       'Min 3: 15 Box Jumps',
-      'Min 4: Recupero / Rest',
+      'Min 4: Riposo (Rest)',
       'Min 5: 15 Burpees',
       'Min 6: 20 KB Swings',
       'Min 7: 15 Box Jumps',
-      'Min 8: Recupero / Rest',
+      'Min 8: Riposo (Rest)',
       'Min 9: 15 Burpees',
       'Min 10: 20 KB Swings',
       'Min 11: 15 Box Jumps',
@@ -42,7 +46,7 @@ const MODES = [
     totalRounds: null,
     totalDurationSec: 1200,
     exercises: [
-      'Giro: 5 Pull-ups + 10 Push-ups + 15 Air Squats'
+      'Circuito: 5 Trazioni + 10 Piegamenti + 15 Squat'
     ]
   },
   {
@@ -53,7 +57,7 @@ const MODES = [
     totalRounds: null,
     totalDurationSec: null,
     exercises: [
-      'Completa il WOD. Premi +1 ROUND a ogni giro.'
+      'Completa nel minor tempo. Premi +1 ROUND a ogni giro finito.'
     ]
   },
   {
@@ -75,7 +79,7 @@ let elapsedSec = 0
 let timerInterval = null
 let vibrator = null
 
-// Riferimenti Widget UI
+// Riferimenti ai Widget UI
 let txtModeBadge = null
 let txtRound = null
 let txtTimer = null
@@ -153,13 +157,13 @@ function updateTimerDisplay() {
 
   if (cur.id === 'EMOM') {
     const secInMin = elapsedSec % 60
-    const secLeft = secInMin === 0 && elapsedSec > 0 ? 60 : (60 - secInMin)
+    const secLeft = (secInMin === 0 && elapsedSec > 0) ? 60 : (60 - secInMin)
     txtTimer.setProperty(prop.MORE, { text: formatTime(secLeft) })
     txtTimerSub.setProperty(prop.MORE, { text: `FINE MINUTO: ${secLeft}s` })
   } else if (cur.id === 'AMRAP') {
     const remaining = Math.max(0, cur.totalDurationSec - elapsedSec)
     txtTimer.setProperty(prop.MORE, { text: formatTime(remaining) })
-    txtTimerSub.setProperty(prop.MORE, { text: 'TEMPO RESIDUO AMRAP' })
+    txtTimerSub.setProperty(prop.MORE, { text: 'TEMPO RESIDUO' })
   } else if (cur.id === 'TABATA') {
     const cycleSec = elapsedSec % 30
     if (cycleSec < 20) {
@@ -188,9 +192,11 @@ function tickTimer() {
     if (txtTimer) txtTimer.setProperty(prop.MORE, { text: formatTime(secLeft) })
     if (txtTimerSub) txtTimerSub.setProperty(prop.MORE, { text: `FINE MINUTO: ${secLeft}s` })
 
+    // Avviso acustico / vibrazione al 3-2-1
     if (secLeft === 3 || secLeft === 2 || secLeft === 1) {
       triggerVibration(VIBRATOR_SCENE_SHORT_STRONG)
     } else if (secInMin === 0) {
+      // Cambio minuto effettivo
       triggerVibration(VIBRATOR_SCENE_DURATION)
       if (cur.totalRounds && currentRound < cur.totalRounds) {
         currentRound++
@@ -200,7 +206,7 @@ function tickTimer() {
   } else if (cur.id === 'AMRAP') {
     const remaining = Math.max(0, cur.totalDurationSec - elapsedSec)
     if (txtTimer) txtTimer.setProperty(prop.MORE, { text: formatTime(remaining) })
-    if (txtTimerSub) txtTimerSub.setProperty(prop.MORE, { text: 'TEMPO RESIDUO AMRAP' })
+    if (txtTimerSub) txtTimerSub.setProperty(prop.MORE, { text: 'TEMPO RESIDUO' })
     if (remaining === 0) {
       triggerVibration(VIBRATOR_SCENE_DURATION)
     }
@@ -248,6 +254,48 @@ function stopTimerLoop() {
   }
 }
 
+function loadSavedWod() {
+  try {
+    const saved = localStorage.getItem('active_wod')
+    if (saved && saved.title && saved.exercises && saved.exercises.length > 0) {
+      const existingIdx = MODES.findIndex((m) => m.isCustom)
+      if (existingIdx >= 0) {
+        MODES[existingIdx] = { ...saved, isCustom: true }
+      } else {
+        MODES.unshift({ ...saved, isCustom: true })
+      }
+    }
+  } catch (e) {}
+}
+
+function applyNewWod(wod) {
+  if (!wod || !wod.title || !wod.exercises || wod.exercises.length === 0) return
+  try {
+    localStorage.setItem('active_wod', wod)
+  } catch (e) {}
+
+  const existingIdx = MODES.findIndex((m) => m.isCustom)
+  if (existingIdx >= 0) {
+    MODES[existingIdx] = { ...wod, isCustom: true }
+    modeIndex = existingIdx
+  } else {
+    MODES.unshift({ ...wod, isCustom: true })
+    modeIndex = 0
+  }
+
+  currentRound = 1
+  elapsedSec = 0
+
+  triggerVibration(VIBRATOR_SCENE_DURATION)
+
+  const cur = MODES[modeIndex]
+  if (txtModeBadge) {
+    txtModeBadge.setProperty(prop.MORE, { text: cur.title })
+  }
+  updateRoundView()
+  updateTimerDisplay()
+}
+
 DataWidget({
   onInit() {
     try {
@@ -255,12 +303,43 @@ DataWidget({
     } catch (e) {
       vibrator = null
     }
+
+    loadSavedWod()
+
+    try {
+      messageBuilder = new MessageBuilder()
+      messageBuilder.listen(() => {})
+
+      messageBuilder.on('call', ({ payload: buf }) => {
+        try {
+          const data = messageBuilder.buf2Json(buf)
+          if (data && data.method === 'SYNC_WOD' && data.params) {
+            applyNewWod(data.params)
+          } else if (data && data.title && data.exercises) {
+            applyNewWod(data)
+          }
+        } catch (e) {}
+      })
+
+      messageBuilder
+        .request({
+          method: 'GET_WOD'
+        })
+        .then((res) => {
+          if (res && res.data && res.data.result) {
+            applyNewWod(res.data.result)
+          }
+        })
+        .catch(() => {})
+    } catch (e) {
+      messageBuilder = null
+    }
   },
 
   build() {
     const curMode = MODES[modeIndex]
 
-    // 1. Sfondo scuro elegante
+    // 1. Sfondo Nero Puro OLED
     createWidget(widget.FILL_RECT, {
       x: 0,
       y: 0,
@@ -269,78 +348,94 @@ DataWidget({
       color: 0x000000
     })
 
-    // 2. HUD Biometrico Superiore (Frequenza Cardiaca e Calorie)
-    // Frequenza Cardiaca (Sinistra)
+    // 2. HUD Biometrico Superiore (y: 52 - 94: Perfettamente centrato e visibile all'interno del display circolare)
+    // Box Cardio Sinistra (BPM)
+    createWidget(widget.FILL_RECT, {
+      x: 96,
+      y: 52,
+      w: 136,
+      h: 42,
+      radius: 14,
+      color: 0x221314 // Sfondo rosso scuro tenue
+    })
     createWidget(widget.TEXT, {
-      x: 75,
-      y: 28,
-      w: 80,
-      h: 24,
-      color: 0xef4444, // Rosso cardio
-      text_size: 16,
+      x: 102,
+      y: 57,
+      w: 26,
+      h: 30,
+      color: 0xef4444, // Rosso vivo
+      text_size: 20,
       align_h: align.CENTER_H,
       align_v: align.CENTER_V,
-      text: '♥ BPM'
+      text: '♥'
     })
     createWidget(widget.SPORT_DATA, {
       edit_id: 1,
-      x: 70,
-      y: 48,
-      w: 90,
-      h: 38,
+      x: 130,
+      y: 54,
+      w: 96,
+      h: 36,
       category: edit_widget_group_type.SPORTS,
       default_type: sport_data.HR,
       optional_types: [sport_data.HR],
       count: 1,
       rect_visible: false,
-      text_size: 28,
+      text_size: 24,
       text_color: 0xffffff,
       text_x: 0,
       text_y: 0,
-      text_w: 90,
-      text_h: 38,
+      text_w: 96,
+      text_h: 36,
       sub_text_visible: false
     })
 
-    // Calorie Bruciate (Destra)
+    // Box Calorie Destra (KCAL)
+    createWidget(widget.FILL_RECT, {
+      x: 248,
+      y: 52,
+      w: 136,
+      h: 42,
+      radius: 14,
+      color: 0x24180d // Sfondo ambra scuro tenue
+    })
     createWidget(widget.TEXT, {
-      x: 325,
-      y: 28,
-      w: 80,
-      h: 24,
-      color: 0xf59e0b, // Ambra Kcal
-      text_size: 16,
+      x: 254,
+      y: 57,
+      w: 26,
+      h: 30,
+      color: 0xf59e0b, // Ambra vivo
+      text_size: 20,
       align_h: align.CENTER_H,
       align_v: align.CENTER_V,
-      text: '🔥 KCAL'
+      text: '🔥'
     })
     createWidget(widget.SPORT_DATA, {
       edit_id: 2,
-      x: 320,
-      y: 48,
-      w: 90,
-      h: 38,
+      x: 282,
+      y: 54,
+      w: 96,
+      h: 36,
       category: edit_widget_group_type.SPORTS,
       default_type: sport_data.CONSUME,
       optional_types: [sport_data.CONSUME],
       count: 1,
       rect_visible: false,
-      text_size: 28,
+      text_size: 24,
       text_color: 0xffffff,
       text_x: 0,
       text_y: 0,
-      text_w: 90,
-      text_h: 38,
+      text_w: 96,
+      text_h: 36,
       sub_text_visible: false
     })
 
-    // 3. Badge Formato WOD & Indicatore Round
+    // 3. Riga Formato & Round (y: 102 - 136)
     txtModeBadge = createWidget(widget.TEXT, {
-      x: 80,
-      y: 90,
-      w: 140,
+      x: 60,
+      y: 102,
+      w: 175,
       h: 32,
-      color: 0xd97706, // Ambra scuro
+      color: 0xf59e0b,
       text_size: 20,
       align_h: align.CENTER_H,
       align_v: align.CENTER_V,
@@ -349,9 +444,9 @@ DataWidget({
     })
 
     txtRound = createWidget(widget.TEXT, {
-      x: 230,
-      y: 88,
-      w: 170,
+      x: 245,
+      y: 100,
+      w: 175,
       h: 36,
       color: 0x38bdf8, // Ciano brillante
       text_size: 24,
@@ -361,12 +456,12 @@ DataWidget({
       text: getRoundText()
     })
 
-    // 4. Timer Gigante Centrale ad alta visibilità
+    // 4. Timer Gigante al centro dello schermo (y: 142 - 216)
     txtTimer = createWidget(widget.TEXT, {
       x: 0,
-      y: 122,
+      y: 140,
       w: 480,
-      h: 76,
+      h: 68,
       color: 0xffffff,
       text_size: 64,
       align_h: align.CENTER_H,
@@ -377,7 +472,7 @@ DataWidget({
 
     txtTimerSub = createWidget(widget.TEXT, {
       x: 0,
-      y: 194,
+      y: 206,
       w: 480,
       h: 22,
       color: 0x94a3b8,
@@ -387,21 +482,21 @@ DataWidget({
       text: 'FINE MINUTO: 60s'
     })
 
-    // 5. Box Esercizio Corrente (Scheda visiva)
+    // 5. Box Esercizio / Target (y: 234 - 316)
     createWidget(widget.FILL_RECT, {
-      x: 45,
-      y: 224,
-      w: 390,
-      h: 84,
+      x: 50,
+      y: 234,
+      w: 380,
+      h: 82,
       radius: 16,
       color: 0x1e293b // Slate scuro
     })
 
     txtExercise = createWidget(widget.TEXT, {
-      x: 55,
-      y: 230,
-      w: 370,
-      h: 72,
+      x: 60,
+      y: 240,
+      w: 360,
+      h: 70,
       color: 0xf8fafc,
       text_size: 22,
       align_h: align.CENTER_H,
@@ -410,14 +505,14 @@ DataWidget({
       text: getCurrentExerciseText()
     })
 
-    // 6. Pulsante Principale: +1 ROUND (LAP)
+    // 6. Pulsante Principale: +1 ROUND (LAP) (y: 330 - 394)
     btnRound = createWidget(widget.BUTTON, {
       x: 80,
-      y: 326,
+      y: 330,
       w: 320,
       h: 64,
       radius: 32,
-      normal_color: 0xd97706, // Ambra intenso
+      normal_color: 0xd97706, // Ambra brillante
       press_color: 0xb45309,
       text: '+1 ROUND (LAP)',
       text_size: 24,
@@ -430,16 +525,16 @@ DataWidget({
       handleNextRound()
     })
 
-    // 7. Pulsante Secondario: Cambia Modalità (EMOM / AMRAP / FOR TIME)
+    // 7. Pulsante Secondario: Cambia Modalità (y: 406 - 448)
     btnMode = createWidget(widget.BUTTON, {
-      x: 120,
-      y: 404,
-      w: 240,
-      h: 40,
-      radius: 20,
-      normal_color: 0x334155, // Grigio scuro
+      x: 125,
+      y: 406,
+      w: 230,
+      h: 42,
+      radius: 21,
+      normal_color: 0x334155,
       press_color: 0x475569,
-      text: 'MODALITÀ WOD ⟳',
+      text: 'CAMBIA FORMATO',
       text_size: 16,
       color: 0xffffff,
       click_func: () => {
@@ -466,6 +561,12 @@ DataWidget({
         vibrator.stop()
       } catch (e) {}
       vibrator = null
+    }
+    if (messageBuilder) {
+      try {
+        messageBuilder.disConnect()
+      } catch (e) {}
+      messageBuilder = null
     }
   }
 })

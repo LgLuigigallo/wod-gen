@@ -258,6 +258,30 @@ runTest('6.1 Nessun uso di innerHTML in app.js', () => {
   assert.strictEqual(match, null, 'app.js non deve utilizzare innerHTML in nessuna parte del codice!');
 });
 
+// 7. Esportazione WOD per estensione Zepp OS
+runTest('7.1 convertPlanToZeppWod genera il payload corretto per Amazfit Balance', () => {
+  const plan = {
+    titolo: 'EMOM 16 Minuti',
+    formato: 'EMOM',
+    durata_totale_min: 16,
+    attivita: [
+      {
+        nome: 'EMOM Principale',
+        esercizi: ['Min 1: 15 Burpees', 'Min 2: 20 Kettlebell Swings', 'Min 3: 15 Box Jumps', 'Min 4: Rest']
+      }
+    ]
+  };
+
+  const zeppWod = app.convertPlanToZeppWod(plan);
+  assert.strictEqual(zeppWod.id, 'EMOM');
+  assert.strictEqual(zeppWod.type, 'countdown_interval');
+  assert.strictEqual(zeppWod.totalRounds, 16);
+  assert.strictEqual(zeppWod.totalDurationSec, 960);
+  assert.strictEqual(zeppWod.intervalSec, 60);
+  assert.strictEqual(zeppWod.exercises.length, 4);
+  assert.strictEqual(zeppWod.exercises[0], 'Min 1: 15 Burpees');
+});
+
 console.log(`\n========================================`);
 console.log(`Risultato Test: ${testsPassed} passati, ${testsFailed} falliti.`);
 console.log(`========================================\n`);
