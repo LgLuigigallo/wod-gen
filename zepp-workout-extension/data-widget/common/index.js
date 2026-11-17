@@ -46,7 +46,9 @@ const MODES = [
     totalRounds: null,
     totalDurationSec: 1200,
     exercises: [
-      '5 Trazioni + 10 Piegamenti + 15 Squat'
+      '5 Trazioni (Pull-ups)',
+      '10 Piegamenti (Push-ups)',
+      '15 Squat a corpo libero'
     ]
   },
   {
@@ -57,7 +59,9 @@ const MODES = [
     totalRounds: null,
     totalDurationSec: null,
     exercises: [
-      'Completa nel minor tempo possibile'
+      '21 Thruster + 21 Trazioni',
+      '15 Thruster + 15 Trazioni',
+      '9 Thruster + 9 Trazioni'
     ]
   },
   {
@@ -68,13 +72,17 @@ const MODES = [
     totalRounds: 8,
     totalDurationSec: 240,
     exercises: [
-      '20s Lavoro Massimale / 10s Riposo'
+      'Lavoro Massimale',
+      'Riposo'
     ]
   }
 ]
 
 let modeIndex = 0
 let currentRound = 1
+let exerciseIndex = 0
+let completedCount = 0
+let isEmomResting = false
 let elapsedSec = 0
 let timerInterval = null
 let vibrator = null
@@ -96,30 +104,46 @@ function formatTime(totalSec) {
 
 function cleanExerciseName(raw) {
   if (!raw) return 'LAVORO CONTINUO'
-  return raw.replace(/^(Min(?:uto)?\s*\d+\s*:\s*|Round\s*\d+\s*:\s*|Lap\s*\d+\s*:\s*)/i, '').trim()
+  return raw.replace(/^(Min(?:uto)?\s*\d+\s*:\s*|Round\s*\d+\s*:\s*|Lap\s*\d+\s*:\s*|Es(?:ercizio)?\s*\d+\s*:\s*)/i, '').trim()
 }
 
 function getStatusHeaderText() {
   const cur = MODES[modeIndex]
   if (cur.id === 'EMOM') {
     const tot = cur.totalRounds || 12
+    if (isEmomResting) {
+      return `MINUTO ${currentRound}/${tot} · RECUPERA ✓`
+    }
     return `MINUTO ${currentRound} / ${tot}`
-  } else if (cur.id === 'AMRAP') {
-    const mins = cur.totalDurationSec ? Math.round(cur.totalDurationSec / 60) : 20
-    return `AMRAP ${mins}' · GIRO ${currentRound}`
+  } else if (cur.id === 'AMRAP' || cur.id === 'FORTIME') {
+    const numEx = (cur.exercises && cur.exercises.length) || 1
+    const currentExNum = (exerciseIndex % numEx) + 1
+    const prefix = cur.id === 'AMRAP' ? 'AMRAP' : 'FOR TIME'
+    return `${prefix} · GIRO ${currentRound} (ES. ${currentExNum}/${numEx})`
   } else if (cur.id === 'TABATA') {
     const cycleSec = elapsedSec % 30
     const phase = cycleSec < 20 ? 'LAVORO' : 'RIPOSO'
     return `TABATA · ${phase} ${currentRound}/8`
-  } else {
-    return `FOR TIME · GIRO ${currentRound}`
   }
+  return `GIRO ${currentRound}`
 }
 
 function getCurrentExerciseText() {
   const cur = MODES[modeIndex]
+
+  if (cur.id === 'EMOM') {
+    if (isEmomResting) {
+      return '✓ FATTO! RIPOSO'
+    }
+    if (cur.exercises && cur.exercises.length > 0) {
+      const idx = (currentRound - 1) % cur.exercises.length
+      return cleanExerciseName(cur.exercises[idx])
+    }
+    return 'LAVORO CONTINUO'
+  }
+
   if (cur.exercises && cur.exercises.length > 0) {
-    const idx = (currentRound - 1) % cur.exercises.length
+    const idx = exerciseIndex % cur.exercises.length
     return cleanExerciseName(cur.exercises[idx])
   }
   return 'LAVORO CONTINUO'
@@ -127,25 +151,33 @@ function getCurrentExerciseText() {
 
 function getNextExerciseText() {
   const cur = MODES[modeIndex]
-  if (cur.id === 'EMOM' && cur.exercises && cur.exercises.length > 0) {
-    if (cur.totalRounds && currentRound >= cur.totalRounds) {
-      return '↳ ULTIMO MINUTO!'
-    }
-    const nextIdx = currentRound % cur.exercises.length
-    const nextName = cleanExerciseName(cur.exercises[nextIdx])
-    return `↳ Prossimo: ${nextName}`
-  } else if (cur.id === 'AMRAP') {
-    return '↳ Tocca "+1 Giro" a ogni giro completato'
-  } else if (cur.id === 'TABATA') {
-    const cycleSec = elapsedSec % 30
-    if (cycleSec < 20) {
-      return '↳ Prossimo: Riposo 10s'
+
+  if (cur.id === 'EMOM') {
+    if (isEmomResting) {
+      if (cur.totalRounds && currentRound >= cur.totalRounds) {
+        return '↳ ULTIMO MINUTO IN CORSO!'
+      }
+      const nextIdx = currentRound % cur.exercises.length
+      return `↳ Minuto ${currentRound + 1}: ${cleanExerciseName(cur.exercises[nextIdx])}`
     } else {
-      return '↳ Prossimo: Lavoro Massimale 20s'
+      if (cur.totalRounds && currentRound >= cur.totalRounds) {
+        return '↳ ULTIMO MINUTO!'
+      }
+      const nextIdx = currentRound % cur.exercises.length
+      return `↳ Prossimo (Min ${currentRound + 1}): ${cleanExerciseName(cur.exercises[nextIdx])}`
     }
-  } else {
-    return '↳ Tocca "+1 Giro" a ogni giro completato'
   }
+
+  if (cur.exercises && cur.exercises.length > 0) {
+    const numEx = cur.exercises.length
+    const nextIdx = (exerciseIndex + 1) % numEx
+    if (nextIdx === 0) {
+      return `↳ Prossimo: Fine Giro ${currentRound} ➔ ${cleanExerciseName(cur.exercises[0])}`
+    }
+    return `↳ Prossimo: ${cleanExerciseName(cur.exercises[nextIdx])}`
+  }
+
+  return '↳ Tocca per completare e avanzare'
 }
 
 function getActionButtonText() {
@@ -153,13 +185,20 @@ function getActionButtonText() {
   if (elapsedSec === 0) {
     return `CAMBIA FORMATO ⟳`
   }
+
   if (cur.id === 'EMOM') {
-    return 'AVANZA MINUTO ▶'
-  } else if (cur.id === 'AMRAP' || cur.id === 'FORTIME') {
-    return '+1 GIRO (LAP) ✓'
-  } else {
-    return 'TABATA IN CORSO'
+    if (isEmomResting) {
+      return `AVANZA AL MIN ${currentRound + 1} ▶`
+    }
+    return 'COMPLETATO ✓'
   }
+
+  const numEx = (cur.exercises && cur.exercises.length) || 1
+  const nextIdx = (exerciseIndex + 1) % numEx
+  if (nextIdx === 0) {
+    return `FINE GIRO ${currentRound} ✓`
+  }
+  return 'COMPLETATO ✓ (AVANZA)'
 }
 
 function triggerVibration(scene) {
@@ -215,7 +254,6 @@ function tickTimer() {
   elapsedSec++
   const cur = MODES[modeIndex]
 
-  // Aggiorna testo del pulsante al primo secondo (da Cambia Formato ad Azione)
   if (elapsedSec === 1 && btnAction) {
     btnAction.setProperty(prop.MORE, { text: getActionButtonText() })
   }
@@ -232,6 +270,7 @@ function tickTimer() {
     } else if (secInMin === 0) {
       // Cambio minuto effettivo
       triggerVibration(VIBRATOR_SCENE_DURATION)
+      isEmomResting = false
       if (cur.totalRounds && currentRound < cur.totalRounds) {
         currentRound++
         updateRoundView()
@@ -270,28 +309,57 @@ function tickTimer() {
   }
 }
 
-function handleActionButton() {
+// Funzione centrale di avanzamento esercizio (invocabile da tasto o da tocco scheda)
+function handleCompleteExercise() {
   triggerVibration(VIBRATOR_SCENE_SHORT_STRONG)
 
   if (elapsedSec === 0) {
-    // Prima di iniziare l'attività, il pulsante cicla la modalità
     cycleMode()
     return
   }
 
   const cur = MODES[modeIndex]
+
   if (cur.id === 'EMOM') {
-    // Salta subito al minuto successivo
-    if (cur.totalRounds && currentRound < cur.totalRounds) {
-      currentRound++
-      elapsedSec = Math.floor(elapsedSec / 60) * 60 + 60
+    if (!isEmomResting) {
+      // Esercizio del minuto completato in anticipo: entra in riposo
+      isEmomResting = true
+      completedCount++
       updateRoundView()
-      updateTimerDisplay()
+    } else {
+      // Già in riposo: salta subito al minuto successivo
+      isEmomResting = false
+      if (cur.totalRounds && currentRound < cur.totalRounds) {
+        currentRound++
+        elapsedSec = Math.floor(elapsedSec / 60) * 60 + 60
+        updateRoundView()
+        updateTimerDisplay()
+      }
     }
-  } else {
-    // AMRAP o FOR TIME: conta +1 giro
-    currentRound++
+  } else if (cur.id === 'AMRAP' || cur.id === 'FORTIME') {
+    completedCount++
+    const numEx = (cur.exercises && cur.exercises.length) || 1
+    exerciseIndex++
+
+    // Se abbiamo completato tutti gli esercizi del giro
+    if (exerciseIndex % numEx === 0) {
+      currentRound++
+      triggerVibration(VIBRATOR_SCENE_DURATION) // Vibrazione prolungata per giro finito
+    }
+
     updateRoundView()
+  } else if (cur.id === 'TABATA') {
+    const cycleSec = elapsedSec % 30
+    if (cycleSec < 20) {
+      elapsedSec = Math.floor(elapsedSec / 30) * 30 + 20
+    } else {
+      elapsedSec = Math.floor(elapsedSec / 30) * 30 + 30
+      if (cur.totalRounds && currentRound < cur.totalRounds) {
+        currentRound++
+      }
+    }
+    updateRoundView()
+    updateTimerDisplay()
   }
 }
 
@@ -299,6 +367,9 @@ function cycleMode() {
   triggerVibration(VIBRATOR_SCENE_SHORT_STRONG)
   modeIndex = (modeIndex + 1) % MODES.length
   currentRound = 1
+  exerciseIndex = 0
+  completedCount = 0
+  isEmomResting = false
   elapsedSec = 0
   updateRoundView()
   updateTimerDisplay()
@@ -351,6 +422,9 @@ function applyNewWod(wod) {
   }
 
   currentRound = 1
+  exerciseIndex = 0
+  completedCount = 0
+  isEmomResting = false
   elapsedSec = 0
 
   triggerVibration(VIBRATOR_SCENE_DURATION)
@@ -489,7 +563,7 @@ DataWidget({
       sub_text_visible: false
     })
 
-    // 3. Intestazione Stato / Round (y: 88 - 116)
+    // 3. Intestazione Stato / Progresso Esercizi (y: 88 - 116)
     txtStatus = createWidget(widget.TEXT, {
       x: 0,
       y: 88,
@@ -508,14 +582,17 @@ DataWidget({
       }
     })
 
-    // 4. Scheda Esercizio Corrente (Il protagonista al centro, y: 122 - 222)
-    createWidget(widget.FILL_RECT, {
+    // 4. Scheda Esercizio Corrente (y: 122 - 222: Toccabile anche direttamente!)
+    const cardRect = createWidget(widget.FILL_RECT, {
       x: 36,
       y: 122,
       w: 408,
       h: 100,
       radius: 18,
-      color: 0x161e2e // Slate Navy elegante
+      color: 0x161e2e // Slate Navy
+    })
+    cardRect.addEventListener(event.CLICK_UP, () => {
+      handleCompleteExercise()
     })
 
     txtExercise = createWidget(widget.TEXT, {
@@ -530,14 +607,17 @@ DataWidget({
       text_style: text_style.WRAP,
       text: getCurrentExerciseText()
     })
+    txtExercise.addEventListener(event.CLICK_UP, () => {
+      handleCompleteExercise()
+    })
 
-    // 5. Timer Gigante Conto alla Rovescia (y: 230 - 318)
+    // 5. Timer Gigante (y: 230 - 318)
     txtTimer = createWidget(widget.TEXT, {
       x: 0,
       y: 230,
       w: 480,
       h: 88,
-      color: 0xfbbf24, // Oro/Ambra ad alta visibilità
+      color: 0xfbbf24, // Oro/Ambra
       text_size: 72,
       align_h: align.CENTER_H,
       align_v: align.CENTER_V,
@@ -561,9 +641,9 @@ DataWidget({
 
     // 7. Pulsante Unico e Pulito in Basso (y: 374 - 430)
     btnAction = createWidget(widget.BUTTON, {
-      x: 100,
+      x: 90,
       y: 374,
-      w: 280,
+      w: 300,
       h: 56,
       radius: 28,
       normal_color: 0xd97706, // Ambra sportivo
@@ -572,11 +652,11 @@ DataWidget({
       text_size: 20,
       color: 0x000000,
       click_func: () => {
-        handleActionButton()
+        handleCompleteExercise()
       }
     })
     btnAction.addEventListener(event.CLICK_UP, () => {
-      handleActionButton()
+      handleCompleteExercise()
     })
 
     startTimerLoop()
