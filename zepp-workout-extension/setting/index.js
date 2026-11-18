@@ -62,7 +62,7 @@ AppSettingsPage({
     // 2. Banner di Stato Invio (Conferma o Errore)
     if (this.state.syncStatus) {
       const status = this.state.syncStatus
-      if (status === 'SUCCESS') {
+      if (status === 'SUCCESS_LIVE' || status === 'SUCCESS') {
         views.push(
           View(
             {
@@ -84,7 +84,7 @@ AppSettingsPage({
                     marginBottom: '4px'
                   }
                 },
-                ['✓ WOD INVIATO CON SUCCESSO!']
+                ['✓ WOD SINCRONIZZATO IN TEMPO REALE!']
               ),
               View(
                 {
@@ -93,7 +93,53 @@ AppSettingsPage({
                     color: '#065f46'
                   }
                 },
-                ['Il piano è arrivato al Balance. L\'orologio ha confermato con una vibrazione.']
+                ['Il piano è arrivato sul Balance. L\'orologio ha confermato la ricezione con una vibrazione.']
+              )
+            ]
+          )
+        )
+      } else if (status === 'SAVED_READY') {
+        views.push(
+          View(
+            {
+              style: {
+                backgroundColor: '#ecfdf5',
+                border: '1px solid #10b981',
+                borderRadius: '10px',
+                padding: '12px',
+                marginBottom: '16px'
+              }
+            },
+            [
+              View(
+                {
+                  style: {
+                    fontSize: '16px',
+                    fontWeight: 'bold',
+                    color: '#047857',
+                    marginBottom: '4px'
+                  }
+                },
+                ['✓ WOD SALVATO E PRONTO PER IL BALANCE!']
+              ),
+              View(
+                {
+                  style: {
+                    fontSize: '13px',
+                    color: '#065f46',
+                    marginBottom: '4px'
+                  }
+                },
+                ['Il piano è registrato correttamente. All\'avvio dell\'allenamento sul Balance (Forza / Corpo libero), la schermata WOD caricherà automaticamente questa scheda.']
+              ),
+              View(
+                {
+                  style: {
+                    fontSize: '12px',
+                    color: '#059669'
+                  }
+                },
+                ['💡 Per sincronizzare all\'istante durante un allenamento già in corso, tieni aperta la pagina WOD sull\'orologio prima di premere Invia.']
               )
             ]
           )

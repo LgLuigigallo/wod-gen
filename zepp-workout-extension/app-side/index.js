@@ -18,21 +18,36 @@ async function sendWodToWatch(wod) {
   try {
     settings.settingsStorage.setItem('sync_status', 'IN_CORSO')
 
-    const res = await messageBuilder.request(
-      {
+    let acknowledged = false
+    try {
+      const res = await messageBuilder.request(
+        {
+          method: 'SYNC_WOD',
+          params: wod
+        },
+        { timeout: 3500 }
+      )
+      if (res && (res.result === 'OK' || res.result === 'SUCCESS')) {
+        acknowledged = true
+      }
+    } catch (e) {
+      // Normale: l'orologio è in standby o non è nella schermata allenamento in questo istante
+    }
+
+    try {
+      messageBuilder.call({
         method: 'SYNC_WOD',
         params: wod
-      },
-      { timeout: 8000 }
-    )
+      })
+    } catch (e) {}
 
-    if (res && res.result === 'OK') {
-      settings.settingsStorage.setItem('sync_status', 'SUCCESS')
+    if (acknowledged) {
+      settings.settingsStorage.setItem('sync_status', 'SUCCESS_LIVE')
     } else {
-      settings.settingsStorage.setItem('sync_status', 'FAILED: Risposta inattesa dall\'orologio')
+      settings.settingsStorage.setItem('sync_status', 'SAVED_READY')
     }
   } catch (err) {
-    settings.settingsStorage.setItem('sync_status', 'FAILED: Orologio non raggiungibile via Bluetooth')
+    settings.settingsStorage.setItem('sync_status', 'FAILED: ' + (err.message || 'Errore generico'))
   }
 }
 

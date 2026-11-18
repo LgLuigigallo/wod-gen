@@ -406,7 +406,8 @@ function stopTimerLoop() {
 
 function loadSavedWod() {
   try {
-    const saved = localStorage.getItem('active_wod')
+    const raw = localStorage.getItem('active_wod')
+    const saved = typeof raw === 'string' ? JSON.parse(raw) : raw
     if (saved && saved.exercises && saved.exercises.length > 0) {
       const existingIdx = MODES.findIndex((m) => m.isCustom)
       const customWod = { ...saved, isCustom: true }
@@ -420,9 +421,17 @@ function loadSavedWod() {
 }
 
 function applyNewWod(wod) {
-  if (!wod || !wod.exercises || wod.exercises.length === 0) return
+  if (!wod) return
+  if (typeof wod === 'string') {
+    try {
+      wod = JSON.parse(wod)
+    } catch (e) {
+      return
+    }
+  }
+  if (!wod.exercises || wod.exercises.length === 0) return
   try {
-    localStorage.setItem('active_wod', wod)
+    localStorage.setItem('active_wod', JSON.stringify(wod))
   } catch (e) {}
 
   const normalizedWod = {
@@ -516,8 +525,9 @@ DataWidget({
           method: 'GET_WOD'
         })
         .then((res) => {
-          if (res && res.data && res.data.result) {
-            applyNewWod(res.data.result)
+          const wod = (res && res.result) || (res && res.data && res.data.result) || res
+          if (wod && wod.exercises && wod.exercises.length > 0) {
+            applyNewWod(wod)
           }
         })
         .catch(() => {})

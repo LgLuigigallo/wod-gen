@@ -70,10 +70,9 @@ FORMATO DI USCITA
     'gemini': [
       'gemini-3.5-flash-lite',
       'gemini-3.5-flash',
-      'gemini-3.8-flash',
-      'gemini-3-flash',
       'gemini-3.8-flash-lite',
-      'gemini-2.0-flash'
+      'gemini-3.6-flash',
+      'gemini-3.8-flash'
     ],
     'openai-responses': [
       'gpt-4o-mini',
@@ -164,9 +163,15 @@ Allegati: ${shotsCount} screenshot. Produci il JSON richiesto.`;
         temperature: 0.2
       };
       if (cleanModel.startsWith('gemini-3')) {
-        genConfig.thinkingConfig = {
-          thinkingLevel: 'low'
-        };
+        if (cleanModel.includes('flash-lite')) {
+          genConfig.thinkingConfig = {
+            thinkingLevel: 'MINIMAL'
+          };
+        } else {
+          genConfig.thinkingConfig = {
+            thinkingLevel: 'LOW'
+          };
+        }
       }
 
       const bodyObj = {
@@ -1072,12 +1077,11 @@ Allegati: ${shotsCount} screenshot. Produci il JSON richiesto.`;
         const opt = document.createElement('option');
         opt.value = m;
         let label = m;
-        if (m === 'gemini-3.5-flash-lite') label = 'Gemini 3.5 Flash Lite (Ultra-veloce, consigliato)';
-        else if (m === 'gemini-3.5-flash') label = 'Gemini 3.5 Flash (Rapido)';
-        else if (m === 'gemini-3.8-flash') label = 'Gemini 3.8 Flash (Ragionamento)';
-        else if (m === 'gemini-3-flash') label = 'Gemini 3 Flash';
-        else if (m === 'gemini-3.8-flash-lite') label = 'Gemini 3.8 Flash Lite';
-        else if (m === 'gemini-2.0-flash') label = 'Gemini 2.0 Flash';
+        if (m === 'gemini-3.5-flash-lite') label = 'Gemini 3.5 Flash Lite (Ultra-veloce)';
+        else if (m === 'gemini-3.5-flash') label = 'Gemini 3.5 Flash (Bilanciato)';
+        else if (m === 'gemini-3.8-flash-lite') label = 'Gemini 3.8 Flash Lite (Veloce)';
+        else if (m === 'gemini-3.6-flash') label = 'Gemini 3.6 Flash';
+        else if (m === 'gemini-3.8-flash') label = 'Gemini 3.8 Flash (Potente)';
         else if (m === 'gpt-4o-mini') label = 'OpenAI GPT-4o Mini (Consigliato)';
         opt.textContent = label;
         if (m === curModel) {
@@ -1704,16 +1708,11 @@ Allegati: ${shotsCount} screenshot. Produci il JSON richiesto.`;
       }
     });
 
-    async function executeGeneration(prov, apiKey, userMsg, imagesBase64, signal, isRetry = false, overrideModel = null) {
+    async function executeGeneration(prov, apiKey, userMsg, imagesBase64, signal, attempt = 0, overrideModel = null) {
       let model = overrideModel || settings.models[prov] || DEFAULT_MODELS[prov];
 
-      // Auto-migrazione attiva se il modello salvato è deprecato o non responsive
-      if (prov === 'gemini' && (!model || model === 'gemini-flash-latest' || model === 'gemini-3.8-flash' || model.includes('2.5') || model.includes('1.5'))) {
-        model = 'gemini-3.5-flash-lite';
-        settings.models['gemini'] = 'gemini-3.5-flash-lite';
-        STORAGE.set('wb.model.gemini', 'gemini-3.5-flash-lite');
-        if (el.inputModel) el.inputModel.value = 'gemini-3.5-flash-lite';
-        syncHomeModelSelect();
+      if (prov === 'gemini' && !model) {
+        model = DEFAULT_MODELS.gemini;
       }
 
       const baseUrl = prov === 'compat-chat' ? settings.baseUrls.compat : settings.baseUrls.openai;
@@ -1738,7 +1737,7 @@ Allegati: ${shotsCount} screenshot. Produci il JSON richiesto.`;
         });
       } catch (networkErr) {
         // Se compat-chat fallisce con response_format non supportato, prova una volta senza
-        if (prov === 'compat-chat' && !isRetry) {
+        if (prov === 'compat-chat' && attempt === 0) {
           const fallbackReq = buildRequest(prov, {
             apiKey,
             model,
@@ -1768,14 +1767,38 @@ Allegati: ${shotsCount} screenshot. Produci il JSON richiesto.`;
           }
         } catch (e) {}
 
-        // Fallback automatico se 503 (sovraccarico temporaneo) su Gemini
-        if (res.status === 503 && prov === 'gemini' && !isRetry) {
-          const fallbackModel = (model === 'gemini-3.5-flash-lite') ? 'gemini-3.5-flash' : 'gemini-3.5-flash-lite';
-          console.warn(`Modello ${model} ha restituito 503 (sovraccarico). Tentativo automatico con ${fallbackModel}...`);
-          if (el.loadingStatusText) {
-            el.loadingStatusText.textContent = `Modello sovraccarico, provo ${fallbackModel}…`;
+        // Gestione avanzata 503 (Server Overloaded / High demand) con backoff e jitter
+        if (res.status === 503 && prov === 'gemini' && attempt < 3) {
+          const delays = [1500, 2500, 3500];
+          const delay = delays[attempt] + Math.floor(Math.random() * 500);
+
+          let nextModel = model;
+          if (attempt === 0) {
+            // Tentativo 1: riprova lo stesso modello dopo backoff (il 503 è un picco transitorio)
+            if (el.loadingStatusText) {
+              el.loadingStatusText.textContent = `Server Gemini occupato (503). Nuovo tentativo tra ${Math.round(delay / 1000)}s…`;
+            }
+          } else if (attempt === 1) {
+            // Tentativo 2: prova modello alternativo leggero
+            if (model === 'gemini-3.5-flash-lite') nextModel = 'gemini-3.5-flash';
+            else if (model === 'gemini-3.5-flash') nextModel = 'gemini-3.8-flash-lite';
+            else nextModel = 'gemini-3.5-flash-lite';
+
+            if (el.loadingStatusText) {
+              el.loadingStatusText.textContent = `Server occupato. Tento con ${nextModel} tra ${Math.round(delay / 1000)}s…`;
+            }
+          } else {
+            // Tentativo 3: fallback rapido
+            nextModel = (model === 'gemini-3.8-flash-lite') ? 'gemini-3.8-flash' : 'gemini-3.8-flash-lite';
+            if (el.loadingStatusText) {
+              el.loadingStatusText.textContent = `Ultimo tentativo con ${nextModel}…`;
+            }
           }
-          return executeGeneration(prov, apiKey, userMsg, imagesBase64, signal, true, fallbackModel);
+
+          console.warn(`Gemini 503 per ${model} (tentativo ${attempt + 1}). Attendo ${delay}ms prima di riprovare con ${nextModel}...`);
+          await new Promise(r => setTimeout(r, delay));
+          if (signal && signal.aborted) throw new DOMException('Aborted', 'AbortError');
+          return executeGeneration(prov, apiKey, userMsg, imagesBase64, signal, attempt + 1, nextModel);
         }
 
         throw new Error(errDetails);
@@ -1788,10 +1811,10 @@ Allegati: ${shotsCount} screenshot. Produci il JSON richiesto.`;
       try {
         parsedObj = parseModelJson(rawText);
       } catch (parseErr) {
-        if (!isRetry) {
+        if (attempt === 0) {
           // Un solo tentativo automatico di nuova richiesta se il JSON non è valido (Sezione 8.6)
           const retryUserMsg = `${userMsg}\n\nLa risposta precedente non era JSON valido. Rispondi solo con il JSON.`;
-          return executeGeneration(prov, apiKey, retryUserMsg, imagesBase64, signal, true);
+          return executeGeneration(prov, apiKey, retryUserMsg, imagesBase64, signal, attempt + 1, model);
         }
         throw new Error(`La risposta non era nel formato atteso. Dettagli: ${rawText}`);
       }
